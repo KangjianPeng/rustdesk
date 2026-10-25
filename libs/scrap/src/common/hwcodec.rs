@@ -29,6 +29,7 @@ const DEFAULT_PIXFMT: AVPixelFormat = AVPixelFormat::AV_PIX_FMT_NV12;
 pub const DEFAULT_FPS: i32 = 30;
 const DEFAULT_GOP: i32 = i32::MAX;
 const DEFAULT_HW_QUALITY: Quality = Quality_Default;
+const MAX_VAAPI_BITRATE_KBPS: u32 = 8_000;
 pub const ERR_HEVC_POC: i32 = HwcodecErrno::HWCODEC_ERR_HEVC_COULD_NOT_FIND_POC as i32;
 
 crate::generate_call_macro!(call_yuv, false);
@@ -65,9 +66,7 @@ impl EncoderApi for HwRamEncoder {
         match cfg {
             EncoderCfg::HWRAM(config) => {
                 let rc = Self::rate_control(&config);
-                let mut bitrate =
-                    Self::bitrate(&config.name, config.width, config.height, config.quality);
-                bitrate = Self::check_bitrate_range(&config, bitrate);
+                let bitrate = Self::bitrate_for_config(&config, config.quality);
                 let gop = config.keyframe_interval.unwrap_or(DEFAULT_GOP as _) as i32;
                 let ctx = EncodeContext {
                     name: config.name.clone(),
@@ -171,14 +170,8 @@ impl EncoderApi for HwRamEncoder {
     }
 
     fn set_quality(&mut self, ratio: f32) -> ResultType<()> {
-        let mut bitrate = Self::bitrate(
-            &self.config.name,
-            self.config.width,
-            self.config.height,
-            ratio,
-        );
+        let bitrate = Self::bitrate_for_config(&self.config, ratio);
         if bitrate > 0 {
-            bitrate = Self::check_bitrate_range(&self.config, bitrate);
             self.encoder.set_bitrate(bitrate as _).ok();
             self.bitrate = bitrate;
         }
@@ -210,6 +203,16 @@ impl EncoderApi for HwRamEncoder {
 }
 
 impl HwRamEncoder {
+    fn bitrate_for_config(config: &HwRamEncoderConfig, quality: f32) -> u32 {
+        let bitrate = Self::bitrate(&config.name, config.width, config.height, quality);
+        let bitrate = Self::check_bitrate_range(config, bitrate);
+        if config.name.contains("vaapi") {
+            bitrate.min(MAX_VAAPI_BITRATE_KBPS)
+        } else {
+            bitrate
+        }
+    }
+
     pub fn try_get(format: CodecFormat) -> Option<CodecInfo> {
         let mut info = None;
         let best = CodecInfo::prioritized(HwCodecConfig::get().ram_encode);

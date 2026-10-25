@@ -98,7 +98,8 @@ pub const MILLI1: Duration = Duration::from_millis(1);
 pub const SEC30: Duration = Duration::from_secs(30);
 // Empirical restart reconnect grace window.
 const RESTART_REMOTE_DEVICE_GRACE: Duration = Duration::from_secs(5 * 60);
-pub const VIDEO_QUEUE_SIZE: usize = 120;
+// At 30 FPS, this leaves about 500 ms for short decode or scheduling stalls.
+pub const VIDEO_QUEUE_SIZE: usize = 15;
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
 
 #[cfg(target_os = "linux")]

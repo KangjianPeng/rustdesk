@@ -1,7 +1,7 @@
 use super::ffi::*;
 use super::Display;
-use hbb_common::libc;
-use std::{io, ptr, slice};
+use hbb_common::{libc, log};
+use std::{io, ptr, slice, time::{Duration, Instant}};
 
 pub struct Capturer {
     display: Display,
@@ -11,6 +11,10 @@ pub struct Capturer {
 
     size: usize,
     saved_raw_data: Vec<u8>, // for faster compare and copy
+    stats_started: Instant,
+    capture_count: u64,
+    changed_count: u64,
+    unchanged_count: u64,
 }
 
 impl Capturer {
@@ -64,6 +68,10 @@ impl Capturer {
             buffer,
             size,
             saved_raw_data: Vec::new(),
+            stats_started: Instant::now(),
+            capture_count: 0,
+            changed_count: 0,
+            unchanged_count: 0,
         };
         Ok(c)
     }
@@ -94,10 +102,36 @@ impl Capturer {
     }
 
     pub fn frame<'b>(&'b mut self) -> std::io::Result<&'b [u8]> {
+        self.capture_count += 1;
         self.get_image();
         let result = unsafe { slice::from_raw_parts(self.buffer, self.size) };
-        crate::would_block_if_equal(&mut self.saved_raw_data, result)?;
+        match crate::would_block_if_equal(&mut self.saved_raw_data, result) {
+            Ok(()) => self.changed_count += 1,
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                self.unchanged_count += 1;
+                self.log_stats();
+                return Err(err);
+            }
+            Err(err) => return Err(err),
+        }
+        self.log_stats();
         Ok(result)
+    }
+
+    fn log_stats(&mut self) {
+        if self.stats_started.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        log::debug!(
+            "x11_capture_stats: calls={}, changed={}, unchanged={}",
+            self.capture_count,
+            self.changed_count,
+            self.unchanged_count,
+        );
+        self.stats_started = Instant::now();
+        self.capture_count = 0;
+        self.changed_count = 0;
+        self.unchanged_count = 0;
     }
 }
 

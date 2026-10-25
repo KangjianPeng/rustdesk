@@ -315,6 +315,15 @@ impl<T: InvokeUiSession> Remote<T> {
                                 // Correcting the inaccuracy of status_timer
                                 (k.clone(), (*v.frame_count.read().unwrap() as i32) * 1000 / elapsed as i32)
                             }).collect::<HashMap<usize, i32>>();
+                            let decode_stats = self.video_threads.iter().map(|(k, v)| {
+                                let decode_fps = *v.decode_fps.read().unwrap();
+                                let queue_len = v.video_queue.read().unwrap().len();
+                                (*k, decode_fps, queue_len)
+                            }).collect::<Vec<_>>();
+                            eprintln!(
+                                "video_receive_stats: output_fps={:?}, decode_fps_queue={:?}",
+                                fps, decode_stats,
+                            );
                             self.video_threads.iter().for_each(|(_, v)| {
                                 *v.frame_count.write().unwrap() = 0;
                             });

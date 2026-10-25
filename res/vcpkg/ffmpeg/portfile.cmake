@@ -102,26 +102,12 @@ if(VCPKG_TARGET_IS_LINUX)
     if(VCPKG_TARGET_ARCHITECTURE STREQUAL "arm")
     else()
         string(APPEND OPTIONS "\
---enable-cuda \
---enable-ffnvcodec \
---enable-encoder=h264_nvenc \
---enable-encoder=hevc_nvenc \
---enable-hwaccel=h264_nvdec \
---enable-hwaccel=hevc_nvdec \
---enable-amf  \
---enable-encoder=h264_amf \
---enable-encoder=hevc_amf \
 --enable-hwaccel=h264_vaapi \
 --enable-hwaccel=hevc_vaapi \
 --enable-encoder=h264_vaapi \
 --enable-encoder=hevc_vaapi \
 ")
 
-        if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
-            string(APPEND OPTIONS "\
-    --enable-cuda_llvm \
-")
-        endif()
     endif()
 elseif(VCPKG_TARGET_IS_WINDOWS)
     string(APPEND OPTIONS "\

@@ -68,14 +68,6 @@
       "host": true,
       "features": [
         {
-          "name": "amf",
-          "platform": "(((windows & !arm) | linux) & static)"
-        },
-        {
-          "name": "nvcodec",
-          "platform": "(((windows & !arm) | linux) & static)"
-        },
-        {
           "name": "qsv",
           "platform": "(windows & !arm & static)"
         }

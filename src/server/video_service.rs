@@ -655,6 +655,12 @@ fn run(vs: VideoService) -> ResultType<()> {
     let capture_width = c.width;
     let capture_height = c.height;
     let (mut second_instant, mut send_counter) = (Instant::now(), 0);
+    let mut stats_instant = Instant::now();
+    let mut capture_calls = 0u64;
+    let mut capture_frames = 0u64;
+    let mut capture_would_block = 0u64;
+    let mut capture_errors = 0u64;
+    let mut encoded_frames = 0u64;
 
     while sp.ok() {
         #[cfg(windows)]
@@ -669,9 +675,6 @@ fn run(vs: VideoService) -> ResultType<()> {
             &sp.name(),
         )?;
         if sp.is_option_true(OPTION_REFRESH) {
-            if vs.source.is_monitor() {
-                let _ = try_broadcast_display_changed(&sp, display_idx, &c, true);
-            }
             log::info!("switch to refresh");
             bail!("SWITCH");
         }
@@ -721,10 +724,12 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         let time = now - start;
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
+        capture_calls += 1;
         let res = match c.frame(spf) {
             Ok(frame) => {
                 repeat_encode_counter = 0;
                 if frame.valid() {
+                    capture_frames += 1;
                     let screenshot_key = (vs.source, display_idx);
                     let screenshot = SCREENSHOTS.lock().unwrap().remove(&screenshot_key);
                     if let Some(mut screenshot) = screenshot {
@@ -787,6 +792,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                     )?;
                     frame_controller.set_send(now, send_conn_ids);
                     send_counter += 1;
+                    encoded_frames += 1;
                 }
                 #[cfg(windows)]
                 {
@@ -803,6 +809,7 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         match res {
             Err(ref e) if e.kind() == WouldBlock => {
+                capture_would_block += 1;
                 #[cfg(windows)]
                 if try_gdi > 0 && !c.is_gdi() {
                     if try_gdi > 3 {
@@ -850,6 +857,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                 }
             }
             Err(err) => {
+                capture_errors += 1;
                 // This check may be redundant, but it is better to be safe.
                 // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
                 if vs.source.is_monitor() {
@@ -870,6 +878,24 @@ fn run(vs: VideoService) -> ResultType<()> {
                     would_block_count = 0;
                 }
             }
+        }
+
+        if stats_instant.elapsed() >= Duration::from_secs(1) {
+            log::debug!(
+                "video_capture_stats display={} calls={} frames={} would_block={} errors={} encoded={}",
+                display_idx,
+                capture_calls,
+                capture_frames,
+                capture_would_block,
+                capture_errors,
+                encoded_frames,
+            );
+            stats_instant = Instant::now();
+            capture_calls = 0;
+            capture_frames = 0;
+            capture_would_block = 0;
+            capture_errors = 0;
+            encoded_frames = 0;
         }
 
         let mut fetched_conn_ids = HashSet::new();
