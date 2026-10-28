@@ -4013,12 +4013,7 @@ pub fn start_video_thread<F, T>(
                                 *vf
                             }
                             MediaData::VideoQueue => {
-                                let queue = video_queue.read().unwrap();
-                                let mut latest = queue.pop();
-                                while let Some(vf) = queue.pop() {
-                                    latest = Some(vf);
-                                }
-                                if let Some(vf) = latest {
+                                if let Some(vf) = video_queue.read().unwrap().pop() {
                                     if discard_queue.read().unwrap().clone() {
                                         continue;
                                     }
