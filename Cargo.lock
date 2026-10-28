@@ -3907,6 +3907,7 @@ dependencies = [
  "cc",
  "env_logger 0.10.2",
  "log",
+ "pkg-config",
  "rand 0.8.5",
  "render",
  "serde 1.0.228",

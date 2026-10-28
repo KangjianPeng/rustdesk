@@ -55,6 +55,17 @@ Please download Sciter dynamic library yourself.
   - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
   - Linux/macOS: vcpkg install libvpx libyuv opus aom
 
+- Linux `hwcodec` builds can use the system FFmpeg development packages through `pkg-config`.
+  This links FFmpeg dynamically and avoids requiring PIC static archives:
+
+  ```sh
+  RUSTDESK_FFMPEG_LINK=system VCPKG_ROOT=$HOME/vcpkg \
+    cargo build --release --features flutter,inline,hwcodec
+  ```
+
+  The default `auto` mode prefers system FFmpeg on Linux and falls back to vcpkg; use
+  `RUSTDESK_FFMPEG_LINK=vcpkg` for a fully vcpkg-backed build.
+
 - run `cargo run`
 
 ## [Build](https://rustdesk.com/docs/en/dev/build/)

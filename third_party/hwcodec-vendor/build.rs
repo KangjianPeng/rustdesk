@@ -100,7 +100,7 @@ mod ffmpeg {
 
     pub fn build_ffmpeg(builder: &mut Build) {
         ffmpeg_ffi();
-        link_vcpkg(builder, std::env::var("VCPKG_ROOT").unwrap().into());
+        link_ffmpeg(builder);
         link_os();
         build_ffmpeg_ram(builder);
         #[cfg(feature = "vram")]
@@ -110,6 +110,60 @@ mod ffmpeg {
         if target_os == "macos" || target_os == "ios" {
             builder.flag("-std=c++11");
         }
+    }
+
+    /// Select the FFmpeg provider without making the Linux build depend on a
+    /// non-PIC static archive. `system` uses pkg-config and links dynamically;
+    /// `vcpkg` keeps the fully self-contained static build for reproducibility.
+    /// `auto` prefers the system provider on Linux and falls back to vcpkg.
+    fn link_ffmpeg(builder: &mut Build) {
+        let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
+        let mode = std::env::var("RUSTDESK_FFMPEG_LINK").unwrap_or_else(|_| "auto".to_owned());
+        println!("cargo:rerun-if-env-changed=RUSTDESK_FFMPEG_LINK");
+
+        match mode.as_str() {
+            "system" => {
+                if target_os != "linux" {
+                    panic!("RUSTDESK_FFMPEG_LINK=system is only supported on Linux");
+                }
+                link_system(builder).unwrap_or_else(|error| {
+                    panic!(
+                        "unable to find system FFmpeg with pkg-config: {error}; install the FFmpeg development packages or use RUSTDESK_FFMPEG_LINK=vcpkg"
+                    )
+                });
+            }
+            "vcpkg" => link_vcpkg_from_env(builder),
+            "auto" if target_os == "linux" => {
+                if let Err(error) = link_system(builder) {
+                    println!(
+                        "cargo:warning=system FFmpeg unavailable ({error}); falling back to vcpkg"
+                    );
+                    link_vcpkg_from_env(builder);
+                }
+            }
+            "auto" => link_vcpkg_from_env(builder),
+            _ => panic!("invalid RUSTDESK_FFMPEG_LINK={mode:?}; expected auto, system, or vcpkg"),
+        }
+    }
+
+    fn link_vcpkg_from_env(builder: &mut Build) {
+        let root = std::env::var("VCPKG_ROOT")
+            .unwrap_or_else(|_| panic!("VCPKG_ROOT is required when using vcpkg FFmpeg"));
+        link_vcpkg(builder, root.into());
+    }
+
+    fn link_system(builder: &mut Build) -> Result<(), pkg_config::Error> {
+        for library in ["libavcodec", "libavformat", "libavutil"] {
+            let result = pkg_config::Config::new()
+                .statik(false)
+                .cargo_metadata(true)
+                .probe(library)?;
+            for include in result.include_paths {
+                builder.include(include);
+            }
+        }
+        println!("cargo:info=using system FFmpeg via pkg-config");
+        Ok(())
     }
 
     fn link_vcpkg(builder: &mut Build, mut path: PathBuf) -> PathBuf {
