@@ -30,14 +30,7 @@ use crate::{
     privacy_mode::{is_current_privacy_mode_impl, PRIVACY_MODE_IMPL_WIN_MAG},
     ui_interface::is_installed,
 };
-use hbb_common::{
-    anyhow::anyhow,
-    config,
-    tokio::sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-        Mutex as TokioMutex,
-    },
-};
+use hbb_common::{anyhow::anyhow, config};
 #[cfg(feature = "hwcodec")]
 use scrap::hwcodec::{HwRamEncoder, HwRamEncoderConfig};
 #[cfg(feature = "vram")]
@@ -57,13 +50,15 @@ use std::{
     collections::HashSet,
     io::ErrorKind::WouldBlock,
     ops::{Deref, DerefMut},
+    sync::mpsc::{channel, Receiver as StdReceiver, RecvTimeoutError, Sender as StdSender},
     time::{self, Duration, Instant},
 };
 
 pub const OPTION_REFRESH: &'static str = "refresh";
 
-type FrameFetchedNotifierSender = UnboundedSender<(i32, Option<Instant>)>;
-type FrameFetchedNotifierReceiver = Arc<TokioMutex<UnboundedReceiver<(i32, Option<Instant>)>>>;
+type FrameFetchedNotifierSender = StdSender<(i32, Option<Instant>)>;
+type FrameFetchedNotifierReceiver = Arc<Mutex<StdReceiver<(i32, Option<Instant>)>>>;
+const FRAME_ACK_TIMEOUT_MILLIS: u64 = 20;
 
 lazy_static::lazy_static! {
     static ref FRAME_FETCHED_NOTIFIERS: Mutex<HashMap<usize, (FrameFetchedNotifierSender, FrameFetchedNotifierReceiver)>> = Mutex::new(HashMap::default());
@@ -146,8 +141,7 @@ impl VideoFrameController {
         }
     }
 
-    #[tokio::main(flavor = "current_thread")]
-    async fn try_wait_next(&mut self, fetched_conn_ids: &mut HashSet<i32>, timeout_millis: u64) {
+    fn try_wait_next(&mut self, fetched_conn_ids: &mut HashSet<i32>, timeout_millis: u64) {
         if self.send_conn_ids.is_empty() {
             return;
         }
@@ -165,29 +159,27 @@ impl VideoFrameController {
                 }
             }
         };
-        let mut receiver_guard = receiver.lock().await;
-        match tokio::time::timeout(timeout_dur, receiver_guard.recv()).await {
-            Err(_) => {
+        let receiver_guard = receiver.lock().unwrap();
+        match receiver_guard.recv_timeout(timeout_dur) {
+            Err(RecvTimeoutError::Timeout) => {
                 // break if timeout
                 // log::error!("blocking wait frame receiving timeout {}", timeout_millis);
             }
-            Ok(Some((id, instant))) => {
+            Ok((id, instant)) => {
                 if let Some(tm) = instant {
                     log::trace!("Channel recv latency: {}", tm.elapsed().as_secs_f32());
                 }
                 fetched_conn_ids.insert(id);
             }
-            Ok(None) => {
+            Err(RecvTimeoutError::Disconnected) => {
                 // this branch would never be reached
             }
         }
-        while !receiver_guard.is_empty() {
-            if let Some((id, instant)) = receiver_guard.recv().await {
-                if let Some(tm) = instant {
-                    log::trace!("Channel recv latency: {}", tm.elapsed().as_secs_f32());
-                }
-                fetched_conn_ids.insert(id);
+        while let Ok((id, instant)) = receiver_guard.try_recv() {
+            if let Some(tm) = instant {
+                log::trace!("Channel recv latency: {}", tm.elapsed().as_secs_f32());
             }
+            fetched_conn_ids.insert(id);
         }
     }
 }
@@ -246,8 +238,8 @@ pub fn new(source: VideoSource, idx: usize) -> GenericService {
         .unwrap()
         .entry(idx)
         .or_insert_with(|| {
-            let (tx, rx) = unbounded_channel();
-            (tx, Arc::new(TokioMutex::new(rx)))
+            let (tx, rx) = channel();
+            (tx, Arc::new(Mutex::new(rx)))
         });
     let vs = VideoService {
         sp: GenericService::new(get_service_name(source, idx), true),
@@ -899,13 +891,13 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
 
         let mut fetched_conn_ids = HashSet::new();
-        let timeout_millis = 3_000u64;
+        let timeout_millis = FRAME_ACK_TIMEOUT_MILLIS;
         let wait_begin = Instant::now();
         while wait_begin.elapsed().as_millis() < timeout_millis as _ {
             if vs.source.is_monitor() {
                 check_privacy_mode_changed(&sp, display_idx, &c)?;
             }
-            frame_controller.try_wait_next(&mut fetched_conn_ids, 300);
+            frame_controller.try_wait_next(&mut fetched_conn_ids, FRAME_ACK_TIMEOUT_MILLIS);
             // break if all connections have received current frame
             if fetched_conn_ids.len() >= frame_controller.send_conn_ids.len() {
                 break;

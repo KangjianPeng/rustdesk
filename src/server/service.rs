@@ -19,7 +19,7 @@ pub trait Service: Send + Sync {
 
 pub trait Subscriber: Default + Send + Sync + 'static {
     fn id(&self) -> i32;
-    fn send(&mut self, msg: Arc<Message>);
+    fn send(&mut self, msg: Arc<Message>) -> bool;
 }
 
 #[derive(Default)]
@@ -236,8 +236,9 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
         let mut conn_ids = HashSet::new();
         let mut lock = self.0.write().unwrap();
         for s in lock.subscribes.values_mut() {
-            s.send(msg.clone());
-            conn_ids.insert(s.id());
+            if s.send(msg.clone()) {
+                conn_ids.insert(s.id());
+            }
         }
         conn_ids
     }

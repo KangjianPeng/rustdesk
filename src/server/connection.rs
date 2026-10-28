@@ -72,6 +72,8 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE};
 #[cfg(windows)]
 use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
+type VideoSender = mpsc::Sender<(Instant, Arc<Message>)>;
+const VIDEO_SEND_QUEUE_SIZE: usize = 1;
 
 lazy_static::lazy_static! {
     static ref LOGIN_FAILURES: [Arc::<Mutex<HashMap<String, (i32, i32, i32)>>>; 2] = Default::default();
@@ -180,7 +182,7 @@ pub fn plugin_block_input(peer: &str, block: bool) -> bool {
 pub struct ConnInner {
     id: i32,
     tx: Option<Sender>,
-    tx_video: Option<Sender>,
+    tx_video: Option<VideoSender>,
 }
 
 struct InputMouse {
@@ -407,7 +409,7 @@ pub struct Connection {
 }
 
 impl ConnInner {
-    pub fn new(id: i32, tx: Option<Sender>, tx_video: Option<Sender>) -> Self {
+    pub fn new(id: i32, tx: Option<Sender>, tx_video: Option<VideoSender>) -> Self {
         Self { id, tx, tx_video }
     }
 }
@@ -419,7 +421,7 @@ impl Subscriber for ConnInner {
     }
 
     #[inline]
-    fn send(&mut self, msg: Arc<Message>) {
+    fn send(&mut self, msg: Arc<Message>) -> bool {
         // Send SwitchDisplay on the same channel as VideoFrame to avoid send order problems.
         let tx_by_video = match &msg.union {
             Some(message::Union::VideoFrame(_)) => true,
@@ -429,14 +431,35 @@ impl Subscriber for ConnInner {
             },
             _ => false,
         };
-        let tx = if tx_by_video {
-            self.tx_video.as_mut()
-        } else {
-            self.tx.as_mut()
-        };
-        tx.map(|tx| {
-            allow_err!(tx.send((Instant::now(), msg)));
-        });
+        if tx_by_video {
+            let is_switch_display = matches!(
+                &msg.union,
+                Some(message::Union::Misc(misc))
+                    if matches!(misc.union, Some(misc::Union::SwitchDisplay(_)))
+            );
+            if let Some(tx) = self.tx_video.as_mut() {
+                let item = (Instant::now(), msg);
+                match tx.try_send(item) {
+                    Ok(()) => return true,
+                    Err(mpsc::error::TrySendError::Full(item)) if is_switch_display => {
+                        // Preserve display-switch control messages even when stale video
+                        // frames are occupying the low-latency queue.
+                        if let Some(tx) = self.tx.as_mut() {
+                            return tx.send(item).is_ok();
+                        }
+                    }
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        log::trace!("Dropping video frame because the send queue is full");
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        log::debug!("Video send queue is closed");
+                    }
+                }
+            }
+        } else if let Some(tx) = self.tx.as_mut() {
+            return tx.send((Instant::now(), msg)).is_ok();
+        }
+        false
     }
 }
 
@@ -477,7 +500,10 @@ impl Connection {
         let tx_from_cm = tx_from_cm_holder.clone();
         let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel::<ipc::Data>();
         let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
-        let (tx_video, mut rx_video) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
+        // Keep at most one queued frame. A slow peer must not turn
+        // transient congestion into seconds of stale remote desktop video.
+        let (tx_video, mut rx_video) =
+            mpsc::channel::<(Instant, Arc<Message>)>(VIDEO_SEND_QUEUE_SIZE);
         let (tx_input, _rx_input) = std_mpsc::channel();
         let (tx_from_authed, mut rx_from_authed) = mpsc::unbounded_channel::<ipc::Data>();
         let mut hbbs_rx = crate::hbbs_http::sync::signal_receiver();

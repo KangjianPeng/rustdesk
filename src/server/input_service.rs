@@ -137,19 +137,20 @@ impl Subscriber for MouseCursorSub {
     }
 
     #[inline]
-    fn send(&mut self, msg: Arc<Message>) {
+    fn send(&mut self, msg: Arc<Message>) -> bool {
         if let Some(message::Union::CursorData(cd)) = &msg.union {
             if let Some(msg) = self.cached.get(&cd.id) {
-                self.inner.send(msg.clone());
+                return self.inner.send(msg.clone());
             } else {
-                self.inner.send(msg.clone());
+                let sent = self.inner.send(msg.clone());
                 let mut tmp = Message::new();
                 // only send id out, require client side cache also
                 tmp.set_cursor_id(cd.id);
                 self.cached.insert(cd.id, Arc::new(tmp));
+                return sent;
             }
         } else {
-            self.inner.send(msg);
+            self.inner.send(msg)
         }
     }
 }
