@@ -17,6 +17,23 @@ extern "C" {
 
 namespace util_encode {
 
+// Encoder tuning options are not stable across the FFmpeg versions shipped by
+// Linux distributions. An unavailable tuning knob must not make an otherwise
+// usable hardware encoder disappear from capability detection.
+static bool set_optional_option(void *priv_data, const std::string &codec,
+                                const char *option, const char *value) {
+  if (!av_opt_find(priv_data, option, nullptr, 0, 0)) {
+    LOG_TRACE(codec + " option unavailable: " + option);
+    return true;
+  }
+  const int ret = av_opt_set(priv_data, option, value, 0);
+  if (ret < 0) {
+    LOG_ERROR(codec + " set opt " + option + " failed, ret = " + av_err2str(ret));
+    return false;
+  }
+  return true;
+}
+
 void set_av_codec_ctx(AVCodecContext *c, const std::string &name, int kbs,
                       int gop, int fps) {
   c->has_b_frames = 0;
@@ -66,33 +83,28 @@ void set_av_codec_ctx(AVCodecContext *c, const std::string &name, int kbs,
 }
 
 bool set_lantency_free(void *priv_data, const std::string &name) {
-  int ret;
-
   if (name.find("nvenc") != std::string::npos) {
-    if ((ret = av_opt_set(priv_data, "delay", "0", 0)) < 0) {
-      LOG_ERROR(std::string("nvenc set_lantency_free failed, ret = ") + av_err2str(ret));
+    if (!set_optional_option(priv_data, "nvenc", "delay", "0")) {
       return false;
     }
   }
   if (name.find("amf") != std::string::npos) {
-    if ((ret = av_opt_set(priv_data, "query_timeout", "1000", 0)) < 0) {
-      LOG_ERROR(std::string("amf set_lantency_free failed, ret = ") + av_err2str(ret));
+    if (!set_optional_option(priv_data, "amf", "query_timeout", "1000")) {
       return false;
     }
   }
   if (name.find("qsv") != std::string::npos) {
-    if ((ret = av_opt_set(priv_data, "async_depth", "1", 0)) < 0) {
-      LOG_ERROR(std::string("qsv set_lantency_free failed, ret = ") + av_err2str(ret));
+    if (!set_optional_option(priv_data, "qsv", "async_depth", "1")) {
       return false;
     }
   }
   if (name.find("vaapi") != std::string::npos) {
-    if ((ret = av_opt_set(priv_data, "async_depth", "1", 0)) < 0) {
-      LOG_ERROR(std::string("vaapi set_lantency_free failed, ret = ") + av_err2str(ret));
+    if (!set_optional_option(priv_data, "vaapi", "async_depth", "1")) {
       return false;
     }
   }
   if (name.find("videotoolbox") != std::string::npos) {
+    int ret;
     if ((ret = av_opt_set_int(priv_data, "realtime", 1, 0)) < 0) {
       LOG_ERROR(std::string("videotoolbox set realtime failed, ret = ") + av_err2str(ret));
       return false;
