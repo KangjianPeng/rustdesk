@@ -77,7 +77,8 @@ void set_av_codec_ctx(AVCodecContext *c, const std::string &name, int kbs,
 
   if (name.find("h264") != std::string::npos) {
     c->profile = FF_PROFILE_H264_HIGH;
-  } else if (name.find("hevc") != std::string::npos) {
+  } else if (name.find("hevc") != std::string::npos ||
+             name.find("x265") != std::string::npos) {
     c->profile = FF_PROFILE_HEVC_MAIN;
   }
 }
@@ -100,6 +101,14 @@ bool set_lantency_free(void *priv_data, const std::string &name) {
   }
   if (name.find("vaapi") != std::string::npos) {
     if (!set_optional_option(priv_data, "vaapi", "async_depth", "1")) {
+      return false;
+    }
+  }
+  if (name.find("x265") != std::string::npos) {
+    if (!set_optional_option(priv_data, "libx265", "preset", "ultrafast")) {
+      return false;
+    }
+    if (!set_optional_option(priv_data, "libx265", "tune", "zerolatency")) {
       return false;
     }
   }

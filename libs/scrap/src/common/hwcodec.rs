@@ -35,6 +35,13 @@ const DEFAULT_HW_QUALITY: Quality = Quality_Default;
 const MAX_VAAPI_BITRATE_KBPS: u32 = 8_000;
 pub const ERR_HEVC_POC: i32 = HwcodecErrno::HWCODEC_ERR_HEVC_COULD_NOT_FIND_POC as i32;
 
+fn should_fallback_to_software(info: &CodecInfo, error: i32, key_frame: bool) -> bool {
+    info.format == DataFormat::H265
+        && info.hwdevice != hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_NONE
+        && error != ERR_HEVC_POC
+        && key_frame
+}
+
 crate::generate_call_macro!(call_yuv, false);
 
 #[cfg(not(target_os = "android"))]
@@ -197,7 +204,7 @@ impl EncoderApi for HwRamEncoder {
     }
 
     fn is_hardware(&self) -> bool {
-        true
+        !self.config.name.contains("x265")
     }
 
     fn disable(&self) {
@@ -246,10 +253,13 @@ impl HwRamEncoder {
         }
     }
 
-    fn rate_control(_config: &HwRamEncoderConfig) -> RateControl {
+    fn rate_control(config: &HwRamEncoderConfig) -> RateControl {
         #[cfg(target_os = "android")]
-        if _config.name.contains("mediacodec") {
+        if config.name.contains("mediacodec") {
             return RC_VBR;
+        }
+        if config.name == "hevc_vaapi" {
+            return RC_CQP;
         }
         RC_CBR
     }
@@ -312,6 +322,7 @@ impl HwRamEncoder {
 
 pub struct HwRamDecoder {
     decoder: Decoder,
+    software_decoder: Option<Decoder>,
     pub info: CodecInfo,
 }
 
@@ -363,18 +374,108 @@ impl HwRamDecoder {
             thread_count: codec_thread_num(16) as _,
         };
         match Decoder::new(ctx) {
-            Ok(decoder) => Ok(HwRamDecoder { decoder, info }),
+            Ok(decoder) => Ok(HwRamDecoder {
+                decoder,
+                software_decoder: None,
+                info,
+            }),
             Err(_) => {
                 HwCodecConfig::clear(false, false);
                 Err(anyhow!(format!("Failed to create decoder")))
             }
         }
     }
-    pub fn decode<'a>(&'a mut self, data: &[u8]) -> ResultType<Vec<HwRamDecoderImage<'a>>> {
+    pub fn decode<'a>(
+        &'a mut self,
+        data: &[u8],
+        key_frame: bool,
+    ) -> ResultType<Vec<HwRamDecoderImage<'a>>> {
+        if self.software_decoder.is_some() {
+            return self
+                .software_decoder
+                .as_mut()
+                .ok_or_else(|| anyhow!("software H265 decoder is unavailable"))?
+                .decode(data)
+                .map(|v| v.iter().map(|f| HwRamDecoderImage { frame: f }).collect())
+                .map_err(|e| anyhow!("software H265 decode failed: {e}"));
+        }
         match self.decoder.decode(data) {
             Ok(v) => Ok(v.iter().map(|f| HwRamDecoderImage { frame: f }).collect()),
+            Err(e) if should_fallback_to_software(&self.info, e, key_frame) => {
+                let Some(info) = CodecInfo::soft().h265 else {
+                    return Err(anyhow!(e));
+                };
+                log::warn!("H265 hardware decoder failed ({e}); falling back to software");
+                self.software_decoder = Some(
+                    Decoder::new(DecodeContext {
+                        name: info.name.clone(),
+                        device_type: info.hwdevice,
+                        thread_count: codec_thread_num(16) as _,
+                    })
+                    .map_err(|_| {
+                        anyhow!(
+                        "failed to create software H265 decoder after hardware decode error: {e}"
+                    )
+                    })?,
+                );
+                self.info = info;
+                self.software_decoder
+                    .as_mut()
+                    .ok_or_else(|| anyhow!("software H265 decoder is unavailable"))?
+                    .decode(data)
+                    .map(|v| v.iter().map(|f| HwRamDecoderImage { frame: f }).collect())
+                    .map_err(|e| anyhow!("software H265 decode failed: {e}"))
+            }
             Err(e) => Err(anyhow!(e)),
         }
+    }
+}
+
+#[cfg(test)]
+mod decoder_fallback_tests {
+    use super::{
+        should_fallback_to_software, CodecInfo, HwRamEncoder, HwRamEncoderConfig, ERR_HEVC_POC,
+    };
+    use hwcodec::{
+        common::{DataFormat, RateControl::{RC_CBR, RC_CQP}},
+        ffmpeg::AVHWDeviceType,
+    };
+
+    #[test]
+    fn hevc_vaapi_uses_cqp_while_h264_stays_cbr() {
+        let hevc = HwRamEncoderConfig {
+            name: "hevc_vaapi".to_owned(),
+            mc_name: None,
+            width: 1920,
+            height: 1080,
+            quality: 1.0,
+            keyframe_interval: None,
+        };
+        let h264 = HwRamEncoderConfig {
+            name: "h264_vaapi".to_owned(),
+            ..hevc.clone()
+        };
+
+        assert_eq!(HwRamEncoder::rate_control(&hevc), RC_CQP);
+        assert_eq!(HwRamEncoder::rate_control(&h264), RC_CBR);
+    }
+
+    #[test]
+    fn software_fallback_requires_a_h265_hardware_key_frame() {
+        let h265_hardware = CodecInfo {
+            format: DataFormat::H265,
+            hwdevice: AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
+            ..Default::default()
+        };
+        let h264_hardware = CodecInfo {
+            format: DataFormat::H264,
+            ..h265_hardware.clone()
+        };
+
+        assert!(should_fallback_to_software(&h265_hardware, -1, true));
+        assert!(!should_fallback_to_software(&h265_hardware, -1, false));
+        assert!(!should_fallback_to_software(&h265_hardware, ERR_HEVC_POC, true));
+        assert!(!should_fallback_to_software(&h264_hardware, -1, true));
     }
 }
 

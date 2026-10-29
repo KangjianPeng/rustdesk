@@ -572,7 +572,7 @@ mod tests {
         quality: f32,
         expected: usize,
     ) {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(256);
         sp.on_subscribe(ConnInner::new(1, None, Some(tx)));
         let mut encoder = Encoder {
             codec: Box::new(CountingEncoder(Rc::new(Cell::new(0)))),
@@ -611,7 +611,7 @@ mod tests {
             1,
         );
         refresh.hardware_backend = HardwareBackend::MediaCodec;
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(256);
         sp.on_subscribe(ConnInner::new(1, None, Some(tx)));
         let mut encoder = Encoder {
             codec: Box::new(CountingEncoder(Rc::new(Cell::new(0)))),

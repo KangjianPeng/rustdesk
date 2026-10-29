@@ -153,7 +153,7 @@ impl Encoder {
     pub fn format_from_name(name: String) -> Result<DataFormat, ()> {
         if name.contains("h264") {
             return Ok(H264);
-        } else if name.contains("hevc") {
+        } else if name.contains("hevc") || name.contains("x265") {
             return Ok(H265);
         } else if name.contains("vp8") {
             return Ok(VP8);
@@ -255,9 +255,9 @@ impl Encoder {
                     ..Default::default()
                 });
                 codecs.push(CodecInfo {
-                    name: "hevc_vaapi".to_owned(),
+                    name: "libx265".to_owned(),
                     format: H265,
-                    priority: Priority::Good as _,
+                    priority: Priority::Soft as _,
                     ..Default::default()
                 });
             }
@@ -417,5 +417,19 @@ impl Drop for Encoder {
             let _ = Box::from_raw(self.frames);
             trace!("Encoder dropped");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Encoder;
+    use crate::common::DataFormat;
+
+    #[test]
+    fn libx265_is_advertised_as_h265() {
+        assert_eq!(
+            Encoder::format_from_name("libx265".to_owned()),
+            Ok(DataFormat::H265)
+        );
     }
 }

@@ -1007,11 +1007,21 @@ pub fn main_get_http_status(url: String) -> Option<String> {
     get_async_http_status(url)
 }
 
+#[inline(never)]
+#[no_mangle]
 pub fn main_get_option(key: String) -> String {
+    if crate::hwcodec_diagnostics::is_diagnostics_key(&key) {
+        return crate::hwcodec_diagnostics::get(&key);
+    }
     get_option(key)
 }
 
+#[inline(never)]
+#[no_mangle]
 pub fn main_get_option_sync(key: String) -> SyncReturn<String> {
+    if crate::hwcodec_diagnostics::is_diagnostics_key(&key) {
+        return SyncReturn(crate::hwcodec_diagnostics::get(&key));
+    }
     SyncReturn(get_option(key))
 }
 
@@ -2677,6 +2687,7 @@ pub fn main_get_buildin_option(key: String) -> SyncReturn<String> {
 }
 
 pub fn main_check_hwcodec() {
+    crate::hwcodec_diagnostics::detect();
     check_hwcodec()
 }
 

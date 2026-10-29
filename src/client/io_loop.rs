@@ -404,7 +404,7 @@ impl<T: InvokeUiSession> Remote<T> {
                                 let queue_len = v.video_queue.read().unwrap().len();
                                 (*k, decode_fps, queue_len)
                             }).collect::<Vec<_>>();
-                            eprintln!(
+                            log::trace!(
                                 "video_receive_stats: output_fps={:?}, decode_fps_queue={:?}",
                                 fps, decode_stats,
                             );

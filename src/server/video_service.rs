@@ -1011,7 +1011,7 @@ fn run(vs: VideoService) -> ResultType<()> {
         }
 
         if stats_instant.elapsed() >= Duration::from_secs(1) {
-            log::debug!(
+            log::trace!(
                 "video_capture_stats display={} calls={} frames={} would_block={} errors={} encoded={}",
                 display_idx,
                 capture_calls,

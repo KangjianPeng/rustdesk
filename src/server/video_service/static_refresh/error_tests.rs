@@ -107,7 +107,7 @@ fn attempt(refresh: &mut StaticRefresh<'_>, encoder: &mut Encoder) {
 fn failures_pause_refresh_until_a_real_frame_succeeds() {
     use Outcome::*;
     let sp = GenericService::new("repeat-errors-test".to_owned(), false);
-    let (tx, rx) = mpsc::unbounded_channel();
+    let (tx, rx) = mpsc::channel(256);
     sp.on_subscribe(ConnInner::new(1, None, Some(tx)));
     let recorder = Arc::new(Mutex::new(None));
     let mut refresh = new_refresh(
@@ -216,7 +216,7 @@ fn vpx_dropped_capture_repeats_the_latest_frame() {
     let sp = GenericService::new("repeat-dropped-capture-test".to_owned(), false);
     let recorder = Arc::new(Mutex::new(None));
     for codec in [CodecFormat::VP8, CodecFormat::VP9] {
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::channel(256);
         sp.on_subscribe(ConnInner::new(1, None, Some(tx)));
         let mut refresh = new_refresh(VideoSource::Monitor, codec, &sp, &recorder, 0, 1, 1);
         let (mut encoder, state) = encoder(&[Frame, Dropped, Dropped, Frame]);
@@ -317,7 +317,7 @@ fn unsuccessful_repeats_preserve_the_frame_budget() {
     let sp = GenericService::new("repeat-frame-budget-test".to_owned(), false);
     let recorder = Arc::new(Mutex::new(None));
     for codec in [CodecFormat::VP8, CodecFormat::VP9] {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(256);
         sp.on_subscribe(ConnInner::new(1, None, Some(tx)));
         let mut refresh = new_refresh(VideoSource::Monitor, codec, &sp, &recorder, 0, 1, 1);
         let limit = max_repeat_frames(codec, BR_BALANCED, HardwareBackend::Other);

@@ -7141,6 +7141,7 @@ dependencies = [
  "hbb_common",
  "hex",
  "hound",
+ "hwcodec",
  "image 0.24.9",
  "impersonate_system",
  "include_dir",

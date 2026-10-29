@@ -27,7 +27,7 @@ use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 flutter = ["flutter_rust_bridge"]
 default = ["use_dasp"]
-hwcodec = ["scrap/hwcodec"]
+hwcodec = ["scrap/hwcodec", "dep:hwcodec"]
 vram = ["scrap/vram"]
 mediacodec = ["scrap/mediacodec"]
 drm = ["scrap/drm"]
@@ -52,6 +52,7 @@ screencapturekit = ["cpal/screencapturekit"]
 [dependencies]
 async-trait = "0.1"
 scrap = { path = "libs/scrap", features = ["wayland"] }
+hwcodec = { path = "third_party/hwcodec-vendor", optional = true }
 hbb_common = { path = "libs/hbb_common", features = ["webrtc"] }
 base = { path = "libs/base" }
 serde_derive = "1.0"

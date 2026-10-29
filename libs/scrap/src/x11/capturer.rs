@@ -122,7 +122,7 @@ impl Capturer {
         if self.stats_started.elapsed() < Duration::from_secs(1) {
             return;
         }
-        log::debug!(
+        log::trace!(
             "x11_capture_stats: calls={}, changed={}, unchanged={}",
             self.capture_count,
             self.changed_count,

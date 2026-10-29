@@ -55,6 +55,7 @@ enum SettingsTabKey {
   general,
   safety,
   network,
+  codec,
   display,
   account,
   printer,
@@ -74,6 +75,7 @@ class DesktopSettingPage extends StatefulWidget {
     if (!bind.isDisableSettings() &&
         bind.mainGetBuildinOption(key: kOptionHideNetworkSetting) != 'Y')
       SettingsTabKey.network,
+    if (!isWeb) SettingsTabKey.codec,
     if (!bind.isIncomingOnly()) SettingsTabKey.display,
     if (!bind.isDisableAccount()) SettingsTabKey.account,
     if (isWindows &&
@@ -199,6 +201,10 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
           settingTabs
               .add(_TabInfo(tab, 'Network', Icons.link_outlined, Icons.link));
           break;
+        case SettingsTabKey.codec:
+          settingTabs
+              .add(_TabInfo(tab, 'Codec', Icons.memory_outlined, Icons.memory));
+          break;
         case SettingsTabKey.display:
           settingTabs.add(_TabInfo(tab, 'Display',
               Icons.desktop_windows_outlined, Icons.desktop_windows));
@@ -232,6 +238,9 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
           break;
         case SettingsTabKey.network:
           children.add(const _Network());
+          break;
+        case SettingsTabKey.codec:
+          children.add(const _CodecDiagnostics());
           break;
         case SettingsTabKey.display:
           children.add(const _Display());
@@ -525,7 +534,10 @@ class _GeneralState extends State<_General> {
     final incomingOnly = bind.isIncomingOnly();
     final outgoingOnly = bind.isOutgoingOnly();
     final showAutoUpdate = (isWindows && bind.mainIsInstalled()) ||
-    (isMacOS && bind.mainIsInstalled() && bind.mainIsInstalledDaemon(prompt: false) && !bind.isCustomClient());
+        (isMacOS &&
+            bind.mainIsInstalled() &&
+            bind.mainIsInstalledDaemon(prompt: false) &&
+            !bind.isCustomClient());
     final children = <Widget>[
       if (!isWeb && !incomingOnly)
         _OptionCheckBox(context, 'Confirm before closing multiple tabs',
@@ -1145,15 +1157,16 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
               child: _OptionCheckBox(context, "Enable trusted devices",
                   kOptionEnableTrustedDevices,
                   optSetter: (key, value) async {
-                try {
-                  await mainSetBoolOption(key, value);
-                } catch (error) {
-                  showToast(error.toString());
-                }
-              },
-                  enabled: !locked, update: (v) {
-                setState(() {});
-              }),
+                    try {
+                      await mainSetBoolOption(key, value);
+                    } catch (error) {
+                      showToast(error.toString());
+                    }
+                  },
+                  enabled: !locked,
+                  update: (v) {
+                    setState(() {});
+                  }),
             ),
           ),
           if (mainGetBoolOptionSync(kOptionEnableTrustedDevices))
@@ -1997,6 +2010,295 @@ class _NetworkState extends State<_Network> with AutomaticKeepAliveClientMixin {
   }
 }
 
+class _CodecDiagnostics extends StatefulWidget {
+  const _CodecDiagnostics({Key? key}) : super(key: key);
+
+  @override
+  State<_CodecDiagnostics> createState() => _CodecDiagnosticsState();
+}
+
+class _CodecDiagnosticsState extends State<_CodecDiagnostics> {
+  Map<String, dynamic> _diagnostics = const {};
+  Map<String, dynamic>? _benchmark;
+  String? _diagnosticsError;
+  bool _loading = true;
+  bool _benchmarking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDiagnostics(detect: true);
+  }
+
+  Future<void> _loadDiagnostics({bool detect = false}) async {
+    if (mounted) setState(() => _loading = true);
+    Map<String, dynamic>? diagnostics;
+    String? error;
+    try {
+      if (detect) {
+        await bind.mainCheckHwcodec();
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      final raw = await bind.mainGetOption(key: 'hwcodec-diagnostics');
+      if (raw.trim().isEmpty) {
+        throw const FormatException(
+            'The running Rust core does not provide codec diagnostics');
+      }
+      final parsed = jsonDecode(raw);
+      if (parsed is! Map) {
+        throw const FormatException(
+            'Codec diagnostics returned an invalid response');
+      }
+      diagnostics = Map<String, dynamic>.from(parsed);
+    } catch (e) {
+      debugPrint('failed to load codec diagnostics: $e');
+      error = e.toString();
+    }
+    if (mounted) {
+      setState(() {
+        _diagnostics = diagnostics ?? const {};
+        _diagnosticsError = error;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _runBenchmark() async {
+    if (_benchmarking) return;
+    setState(() {
+      _benchmarking = true;
+      _benchmark = null;
+    });
+    try {
+      final raw = await bind.mainGetOption(key: 'hwcodec-benchmark');
+      if (raw.trim().isEmpty) {
+        throw const FormatException(
+            'The running Rust core does not provide codec benchmarking');
+      }
+      final parsed = jsonDecode(raw);
+      if (parsed is! Map) {
+        throw const FormatException(
+            'Codec benchmark returned an invalid response');
+      }
+      _benchmark = Map<String, dynamic>.from(parsed);
+    } catch (e) {
+      debugPrint('failed to run codec benchmark: $e');
+      _benchmark = {'ok': false, 'error': e.toString(), 'results': []};
+    }
+    if (mounted) setState(() => _benchmarking = false);
+  }
+
+  Widget _modeChip(bool hardware) {
+    final color = hardware ? Colors.green : Colors.blueGrey;
+    return Chip(
+      avatar: Icon(hardware ? Icons.memory : Icons.settings,
+          size: 16, color: color),
+      label: Text(hardware ? 'Hardware' : 'Software'),
+      visualDensity: VisualDensity.compact,
+      labelStyle: TextStyle(color: color),
+      side: BorderSide(color: color.withOpacity(0.45)),
+      backgroundColor: color.withOpacity(0.08),
+    );
+  }
+
+  Widget _activeRow(String operation, String codec, dynamic value) {
+    final item = value is Map ? Map<String, dynamic>.from(value) : const {};
+    if (item.isEmpty) {
+      return ListTile(
+        dense: true,
+        title: Text('$operation $codec'),
+        subtitle: const Text('Unavailable'),
+        leading: const Icon(Icons.remove_circle_outline),
+      );
+    }
+    final hardware = item['hardware'] == true;
+    return ListTile(
+      dense: true,
+      title: Text('$operation $codec'),
+      subtitle: Text('${item['name'] ?? '-'}  |  ${item['backend'] ?? '-'}'),
+      leading: Icon(hardware ? Icons.memory : Icons.settings,
+          color: hardware ? Colors.green : Colors.blueGrey),
+      trailing: _modeChip(hardware),
+    );
+  }
+
+  Widget _activePaths() {
+    final active = _diagnostics['active'];
+    if (active is! Map) return const Text('No active codec path was detected.');
+    final map = Map<String, dynamic>.from(active);
+    final encode = map['encode'] is Map
+        ? Map<String, dynamic>.from(map['encode'])
+        : const <String, dynamic>{};
+    final decode = map['decode'] is Map
+        ? Map<String, dynamic>.from(map['decode'])
+        : const <String, dynamic>{};
+    return Column(children: [
+      _activeRow('Encode', 'H264', encode['H264']),
+      _activeRow('Encode', 'H265', encode['H265']),
+      _activeRow('Decode', 'H264', decode['H264']),
+      _activeRow('Decode', 'H265', decode['H265']),
+    ]);
+  }
+
+  Widget _backends() {
+    final values = _diagnostics['backends'];
+    if (values is! List || values.isEmpty) {
+      return const Text('No hardware codec backend has been detected.');
+    }
+    final rows = <TableRow>[
+      const TableRow(children: [
+        Padding(padding: EdgeInsets.all(6), child: Text('Codec')),
+        Padding(padding: EdgeInsets.all(6), child: Text('Operation')),
+        Padding(padding: EdgeInsets.all(6), child: Text('Backend')),
+        Padding(padding: EdgeInsets.all(6), child: Text('Mode')),
+      ]),
+    ];
+    for (final value in values) {
+      if (value is! Map) continue;
+      final item = Map<String, dynamic>.from(value);
+      final hardware = item['hardware'] == true;
+      rows.add(TableRow(children: [
+        Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text(item['codec']?.toString() ?? '-')),
+        Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text(item['operation']?.toString() ?? '-')),
+        Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text('${item['backend'] ?? '-'}\n${item['name'] ?? '-'}')),
+        Padding(padding: const EdgeInsets.all(6), child: _modeChip(hardware)),
+      ]));
+    }
+    return Table(
+      border: TableBorder.all(color: Theme.of(context).dividerColor),
+      columnWidths: const {
+        0: FlexColumnWidth(1),
+        1: FlexColumnWidth(1),
+        2: FlexColumnWidth(2.5),
+        3: IntrinsicColumnWidth(),
+      },
+      children: rows,
+    );
+  }
+
+  Widget _benchmarkResults() {
+    if (_benchmark == null) return const SizedBox.shrink();
+    final results = _benchmark!['results'];
+    final error = _benchmark!['error']?.toString();
+    if (results is! List || results.isEmpty) {
+      return Text(
+          error == null || error.isEmpty ? 'No benchmark result.' : error);
+    }
+    final rows = <TableRow>[
+      const TableRow(children: [
+        Padding(padding: EdgeInsets.all(6), child: Text('Codec')),
+        Padding(padding: EdgeInsets.all(6), child: Text('Operation')),
+        Padding(padding: EdgeInsets.all(6), child: Text('Backend')),
+        Padding(padding: EdgeInsets.all(6), child: Text('Mode')),
+        Padding(padding: EdgeInsets.all(6), child: Text('FPS')),
+        Padding(padding: EdgeInsets.all(6), child: Text('Result')),
+      ]),
+    ];
+    for (final value in results) {
+      if (value is! Map) continue;
+      final item = Map<String, dynamic>.from(value);
+      final itemError = item['error'];
+      final hardware = item['hardware'] == true;
+      rows.add(TableRow(children: [
+        Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text(item['codec']?.toString() ?? '-')),
+        Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text(item['operation']?.toString() ?? '-')),
+        Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text(item['backend']?.toString() ?? '-')),
+        Padding(padding: const EdgeInsets.all(6), child: _modeChip(hardware)),
+        Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text(item['fps'] is num
+                ? (item['fps'] as num).toStringAsFixed(1)
+                : '-')),
+        Padding(
+            padding: const EdgeInsets.all(6),
+            child: Text(itemError == null ? 'OK' : itemError.toString())),
+      ]));
+    }
+    return Table(
+      border: TableBorder.all(color: Theme.of(context).dividerColor),
+      columnWidths: const {
+        0: FlexColumnWidth(1),
+        1: FlexColumnWidth(1),
+        2: FlexColumnWidth(2),
+        3: IntrinsicColumnWidth(),
+        4: FlexColumnWidth(1),
+        5: FlexColumnWidth(2),
+      },
+      children: rows,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final diagnosticsAvailable = _diagnostics.isNotEmpty;
+    final detected = _diagnostics['detected'] == true;
+    final enabled = _diagnostics['enabled'] == true;
+    return ListView(children: [
+      _Card(
+        title: 'Codec diagnostics',
+        title_suffix: [
+          if (_loading || _benchmarking)
+            const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+          IconButton(
+            tooltip: translate('Refresh'),
+            onPressed: _loading ? null : () => _loadDiagnostics(detect: true),
+            icon: const Icon(Icons.refresh),
+          ),
+          TextButton.icon(
+            onPressed: _benchmarking ? null : _runBenchmark,
+            icon: const Icon(Icons.speed),
+            label: Text(translate('Test')),
+          ),
+        ],
+        children: [
+          ListTile(
+            dense: true,
+            leading: Icon(
+                _diagnosticsError != null
+                    ? Icons.error_outline
+                    : enabled
+                        ? Icons.check_circle
+                        : Icons.info_outline,
+                color: _diagnosticsError != null
+                    ? Colors.redAccent
+                    : enabled
+                        ? Colors.green
+                        : Colors.blueGrey),
+            title: Text(_diagnosticsError ??
+                (diagnosticsAvailable
+                    ? 'Hardware codec option: ${enabled ? 'enabled' : 'disabled'}'
+                    : 'Codec diagnostics are unavailable')),
+            subtitle: Text(_diagnosticsError != null
+                ? 'Restart RustDesk after installing a build with codec diagnostics.'
+                : detected
+                    ? 'The detected backends below are available to this build.'
+                    : 'Codec detection has not completed yet.'),
+          ),
+        ],
+      ),
+      _Card(title: 'Active codec paths', children: [_activePaths()]),
+      _Card(title: 'Detected backends', children: [_backends()]),
+      if (_benchmark != null)
+        _Card(title: 'Performance test', children: [_benchmarkResults()]),
+    ]).marginOnly(bottom: _kListViewBottomMargin);
+  }
+}
+
 class _Display extends StatefulWidget {
   const _Display({Key? key}) : super(key: key);
 
@@ -2156,6 +2458,28 @@ class _DisplayState extends State<_Display> {
         bind.mainGetUserDefaultOption(key: kOptionCodecPreference);
     var hwRadios = [];
     final isOptFixed = isOptionFixed(kOptionCodecPreference);
+    String codecLabel(String codec) {
+      try {
+        final diagnostics =
+            jsonDecode(bind.mainGetOptionSync(key: 'hwcodec-diagnostics'))
+                as Map;
+        final active = diagnostics['active'] as Map?;
+        final encode = active?['encode'] as Map?;
+        final decode = active?['decode'] as Map?;
+        final encodeHardware = (encode?[codec] as Map?)?['hardware'] == true;
+        final decodeHardware = (decode?[codec] as Map?)?['hardware'] == true;
+        final encodeAvailable = encode?[codec] is Map;
+        final decodeAvailable = decode?[codec] is Map;
+        final modes = <String>[];
+        if (encodeAvailable)
+          modes.add(encodeHardware ? 'HW encode' : 'SW encode');
+        if (decodeAvailable)
+          modes.add(decodeHardware ? 'HW decode' : 'SW decode');
+        if (modes.isNotEmpty) return '$codec (${modes.join(', ')})';
+      } catch (_) {}
+      return codec;
+    }
+
     try {
       final Map codecsJson = jsonDecode(bind.mainSupportedHwdecodings());
       final h264 = codecsJson['h264'] ?? false;
@@ -2164,14 +2488,14 @@ class _DisplayState extends State<_Display> {
         hwRadios.add(_Radio(context,
             value: 'h264',
             groupValue: groupValue,
-            label: 'H264',
+            label: codecLabel('H264'),
             onChanged: isOptFixed ? null : onChanged));
       }
       if (h265) {
         hwRadios.add(_Radio(context,
             value: 'h265',
             groupValue: groupValue,
-            label: 'H265',
+            label: codecLabel('H265'),
             onChanged: isOptFixed ? null : onChanged));
       }
     } catch (e) {
