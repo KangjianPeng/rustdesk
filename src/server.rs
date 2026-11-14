@@ -7,6 +7,7 @@ use std::{
 
 use bytes::Bytes;
 
+use base::message_proto::*;
 pub use connection::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::config::Config2;
@@ -25,7 +26,6 @@ use hbb_common::{
     websocket::{check_ws, is_ws_endpoint},
     ResultType, Stream,
 };
-use base::message_proto::*;
 use scrap::camera;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use service::ServiceTmpl;
@@ -71,17 +71,14 @@ pub mod input_service {
 }
 
 mod connection;
+pub mod display_service;
 mod login_failure_check;
 pub(crate) mod port_forward_mux;
-pub mod display_service;
 #[cfg(windows)]
 pub mod portable_service;
 mod service;
 mod video_qos;
 pub mod video_service;
-
-#[cfg(all(target_os = "windows", feature = "flutter"))]
-pub mod printer_service;
 
 pub type Childs = Arc<Mutex<Vec<std::process::Child>>>;
 type ConnMap = HashMap<i32, ConnInner>;
@@ -159,20 +156,6 @@ pub fn new() -> ServerPtr {
             }
             #[cfg(not(target_os = "linux"))]
             server.add_service(Box::new(input_service::new_window_focus()));
-        }
-    }
-    #[cfg(all(target_os = "windows", feature = "flutter"))]
-    {
-        match printer_service::init(&crate::get_app_name()) {
-            Ok(()) => {
-                log::info!("printer service initialized");
-                server.add_service(Box::new(printer_service::new(
-                    printer_service::NAME.to_owned(),
-                )));
-            }
-            Err(e) => {
-                log::error!("printer service init failed: {}", e);
-            }
         }
     }
     // Terminal service is created per connection, not globally
@@ -776,20 +759,6 @@ pub async fn start_ipc_url_server() {
                 let mut conn = crate::ipc::Connection::new(conn);
                 match conn.next_timeout(1000).await {
                     Ok(Some(data)) => match data {
-                        #[cfg(feature = "flutter")]
-                        Data::UrlLink(url) => {
-                            let mut m = HashMap::new();
-                            m.insert("name", "on_url_scheme_received");
-                            m.insert("url", url.as_str());
-                            let event = serde_json::to_string(&m).unwrap_or("".to_owned());
-                            match crate::flutter::push_global_event(
-                                crate::flutter::APP_TYPE_MAIN,
-                                event,
-                            ) {
-                                None => log::warn!("No main window app found!"),
-                                Some(..) => {}
-                            }
-                        }
                         _ => {
                             log::warn!("An unexpected data was sent to the ipc url server.")
                         }
@@ -809,7 +778,7 @@ pub async fn start_ipc_url_server() {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 async fn wait_initial_config_sync() {
-    if crate::platform::is_root() {
+    if cfg!(debug_assertions) || crate::platform::is_root() || !crate::platform::is_installed() {
         return;
     }
 
@@ -841,6 +810,12 @@ async fn wait_initial_config_sync() {
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 async fn sync_and_watch_config_dir(sync_done_tx: Option<tokio::sync::oneshot::Sender<()>>) {
+    // `dx serve` runs an uninstalled debug binary without a root service.
+    // Keep every entry path from starting an IPC retry loop in that mode.
+    if cfg!(debug_assertions) || crate::platform::is_root() || !crate::platform::is_installed() {
+        return;
+    }
+
     let mut cfg0 = (Config::get(), Config2::get());
     let mut synced = false;
     let mut is_root_config_empty = false;
@@ -929,20 +904,18 @@ async fn sync_and_watch_config_dir(sync_done_tx: Option<tokio::sync::oneshot::Se
                                     _ => {}
                                 }
                             }
-                            _ => {
-                                match conn.next_timeout(1000).await {
-                                    Ok(Some(Data::SyncConfig(None))) => {
-                                        cfg0 = cfg;
-                                        is_root_config_empty = false;
-                                    }
-                                    Ok(Some(Data::SecurityConfigError(error))) => {
-                                        crate::trusted_devices::config::log_sync_error(error)
-                                    }
-                                    _ => crate::trusted_devices::config::log_sync_error(
-                                        "Host did not confirm configuration sync",
-                                    ),
+                            _ => match conn.next_timeout(1000).await {
+                                Ok(Some(Data::SyncConfig(None))) => {
+                                    cfg0 = cfg;
+                                    is_root_config_empty = false;
                                 }
-                            }
+                                Ok(Some(Data::SecurityConfigError(error))) => {
+                                    crate::trusted_devices::config::log_sync_error(error)
+                                }
+                                _ => crate::trusted_devices::config::log_sync_error(
+                                    "Host did not confirm configuration sync",
+                                ),
+                            },
                         }
                     }
                 }

@@ -1,11 +1,10 @@
 /build
 /target
+/artifacts/
 .vscode
 .idea
 .DS_Store
 .env
-libsciter-gtk.so
-src/ui/inline.rs
 extractor
 __pycache__
 src/version.rs
@@ -17,10 +16,7 @@ cert.pfx
 *png
 *svg
 *jpg
-sciter.dll
 **pdb
-src/bridge_generated.rs
-src/bridge_generated.io.rs
 *deb
 rustdesk
 *.cache
@@ -29,9 +25,6 @@ appimage/AppDir
 appimage/*.AppImage
 appimage/appimage-build
 appimage/*.xz
-# flutter
-flutter/linux/build/**
-flutter/linux/cmake-build-debug/**
 # flatpak
 flatpak/.flatpak-builder/**
 flatpak/ccache/**
@@ -42,8 +35,6 @@ flatpak/.flatpak-builder/debian-binary
 flatpak/build/**
 flatpak/repo/**
 flatpak/*.flatpak
-# bridge file
-lib/generated_bridge.dart
 # vscode devcontainer
 .gitconfig
 .vscode-server/
@@ -53,10 +44,9 @@ lib/generated_bridge.dart
 examples/**/target/
 # ===
 vcpkg_installed
-flutter/lib/generated_plugin_registrant.dart
-libsciter.dylib
-flutter/web/
 # libdrmtap is cloned at build time by build.py (not a submodule)
 /third_party/libdrmtap/
+# Node dependencies used to build the Dioxus Tailwind stylesheet.
+node_modules/
 # Local git worktrees
 .worktrees/

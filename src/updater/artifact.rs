@@ -34,30 +34,11 @@ pub(crate) fn current_update_platform() -> &'static str {
 }
 
 pub(crate) fn current_update_arch() -> &'static str {
-    #[cfg(all(target_os = "windows", not(feature = "flutter")))]
-    {
-        "x86"
-    }
-    #[cfg(not(all(target_os = "windows", not(feature = "flutter"))))]
-    {
-        std::env::consts::ARCH
-    }
+    std::env::consts::ARCH
 }
 
-pub(crate) fn current_update_format(update_msi: bool) -> &'static str {
-    #[cfg(any(
-        not(target_os = "windows"),
-        all(target_os = "windows", not(feature = "flutter"))
-    ))]
-    let _ = update_msi;
-    #[cfg(all(target_os = "windows", feature = "flutter"))]
-    {
-        if update_msi {
-            return "msi";
-        }
-        "exe"
-    }
-    #[cfg(all(target_os = "windows", not(feature = "flutter")))]
+pub(crate) fn current_update_format(_update_msi: bool) -> &'static str {
+    #[cfg(target_os = "windows")]
     {
         "exe"
     }
@@ -210,6 +191,11 @@ fn is_plain_update_filename(filename: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_arch_matches_compilation_target() {
+        assert_eq!(current_update_arch(), std::env::consts::ARCH);
+    }
 
     #[test]
     fn update_download_file_accepts_expected_github_asset_urls() {

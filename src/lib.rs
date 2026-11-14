@@ -5,8 +5,8 @@ mod keyboard;
 pub mod platform;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use platform::{
-    clip_cursor, get_cursor, get_cursor_data, get_cursor_pos, get_focused_display,
-    set_cursor_pos, start_os_service,
+    clip_cursor, get_cursor, get_cursor_data, get_cursor_pos, get_focused_display, set_cursor_pos,
+    start_os_service,
 };
 #[cfg(not(any(target_os = "ios")))]
 /// cbindgen:ignore
@@ -23,29 +23,16 @@ pub use self::rendezvous_mediator::*;
 pub mod common;
 #[cfg(not(any(target_os = "ios")))]
 pub mod ipc;
-#[cfg(not(any(
-    target_os = "android",
-    target_os = "ios",
-    feature = "flutter"
-)))]
-pub mod ui;
-pub(crate) mod update_metadata;
 pub(crate) mod update_hash;
-#[cfg(target_os = "macos")]
-mod manual_update;
+pub(crate) mod update_metadata;
 mod version;
 pub use version::*;
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
-mod bridge_generated;
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
-pub mod flutter;
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
-pub mod flutter_ffi;
-#[cfg(feature = "flutter")]
-mod hwcodec_diagnostics;
+#[cfg(feature = "dioxus-ui")]
+pub mod dioxus_ui;
+#[cfg(feature = "dioxus-ui")]
+pub(crate) mod hwcodec_diagnostics;
 use common::*;
 mod auth_2fa;
-mod trusted_devices;
 #[cfg(not(target_os = "ios"))]
 mod clipboard;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -55,6 +42,7 @@ mod lang;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod port_forward;
 mod port_forward_mux;
+mod trusted_devices;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod tray;
@@ -66,7 +54,7 @@ mod whiteboard;
 mod updater;
 
 mod ui_cm_interface;
-mod ui_interface;
+pub(crate) mod ui_interface;
 mod ui_session_interface;
 
 mod hbbs_http;

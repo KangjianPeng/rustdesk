@@ -5,32 +5,22 @@
 
 use librustdesk::*;
 
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
-fn main() {
-    if !common::global_init() {
-        eprintln!("Global initialization failed.");
-        return;
-    }
-    common::test_rendezvous_server();
-    common::test_nat_type();
-    common::global_clean();
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios", feature = "flutter")))]
+#[cfg(all(
+    feature = "dioxus-ui",
+    not(any(target_os = "android", target_os = "ios"))
+))]
 fn main() -> std::process::ExitCode {
     #[cfg(windows)]
     if let Some(exit_code) = platform::handle_service_control() {
         return exit_code;
     }
-    #[cfg(all(windows, not(feature = "inline")))]
+    #[cfg(windows)]
     unsafe {
         winapi::um::shellscalingapi::SetProcessDpiAwareness(2);
     }
-    // Preserve command failures, notably verified macOS offline update failures,
-    // as a non-zero process exit status for CLI callers.
     let exit_code = match crate::core_main::core_main() {
-        Some(crate::core_main::CoreMainAction::StartUi(mut args)) => {
-            ui::start(&mut args);
+        Some(crate::core_main::CoreMainAction::StartUi(args)) => {
+            dioxus_ui::start(args);
             std::process::ExitCode::SUCCESS
         }
         Some(crate::core_main::CoreMainAction::ExitFailure(err)) => {
@@ -42,4 +32,16 @@ fn main() -> std::process::ExitCode {
     };
     common::global_clean();
     exit_code
+}
+
+#[cfg(all(feature = "dioxus-ui", target_os = "android"))]
+fn main() {
+    if !common::global_init() {
+        eprintln!("Global initialization failed.");
+        return;
+    }
+    common::test_rendezvous_server();
+    common::test_nat_type();
+    dioxus_ui::start(Vec::new());
+    common::global_clean();
 }

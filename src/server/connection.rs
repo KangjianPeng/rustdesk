@@ -10,6 +10,10 @@ use crate::clipboard::try_empty_clipboard_files;
 use crate::clipboard::{update_clipboard, ClipboardSide};
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 use crate::clipboard_file::*;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+use crate::common::DEVICE_NAME;
+#[cfg(all(target_os = "android", feature = "dioxus-ui"))]
+use crate::dioxus_ui::connection_manager::start_channel;
 #[cfg(target_os = "android")]
 use crate::keyboard::client::map_key_to_control_key;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -22,8 +26,11 @@ use crate::{
     },
     display_service, ipc, privacy_mode, video_service, VERSION,
 };
-#[cfg(any(target_os = "android", target_os = "ios"))]
-use crate::{common::DEVICE_NAME, flutter::connection_manager::start_channel};
+use base::{
+    config::keys,
+    fs::{self, can_enable_overwrite_detection, JobType},
+    message_proto::{option_message::BoolOption, permission_info::Permission},
+};
 use cidr_utils::cidr::IpCidr;
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
@@ -44,11 +51,6 @@ use hbb_common::{
         time::{self, Duration, Instant},
     },
     tokio_util::codec::{BytesCodec, Framed},
-};
-use base::{
-    config::keys,
-    fs::{self, can_enable_overwrite_detection, JobType},
-    message_proto::{option_message::BoolOption, permission_info::Permission},
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use scrap::android::{call_main_service_key_event, call_main_service_pointer_input};
@@ -200,17 +202,6 @@ lazy_static::lazy_static! {
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
     static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-const SWITCH_SIDES_UUID_TTL: Duration = Duration::from_secs(10);
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-lazy_static::lazy_static! {
-    static ref SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid)>>> = Default::default();
-    static ref PENDING_SWITCH_SIDES_UUID: Arc::<Mutex<HashMap<String, (Instant, uuid::Uuid, bool)>>> = Default::default();
 }
 
 #[cfg(target_os = "windows")]
@@ -696,7 +687,7 @@ impl Connection {
             sleep(1.).await;
             return;
         }
-        #[cfg(target_os = "android")]
+        #[cfg(all(target_os = "android", feature = "dioxus-ui"))]
         start_channel(rx_to_cm, tx_from_cm);
         #[cfg(target_os = "android")]
         conn.send_permission(Permission::Keyboard, conn.keyboard)
@@ -996,15 +987,6 @@ impl Connection {
                                 log::error!("Failed to start portable service from cm: {:?}", e);
                             }
                         }
-                        #[cfg(feature = "flutter")]
-                        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                        ipc::Data::SwitchSidesBack => {
-                            let mut misc = Misc::new();
-                            misc.set_switch_back(SwitchBack::default());
-                            let mut msg = Message::new();
-                            msg.set_misc(misc);
-                            conn.send(msg).await;
-                        }
                         ipc::Data::VoiceCallResponse(accepted) => {
                             conn.handle_voice_call(accepted).await;
                         }
@@ -1183,14 +1165,6 @@ impl Connection {
                             )).await;
                             conn.on_close("privacy mode", false).await;
                             break;
-                        }
-                        #[cfg(all(target_os = "windows", feature = "flutter"))]
-                        ipc::Data::PrinterData(data) => {
-                            if Self::permission(keys::OPTION_ENABLE_REMOTE_PRINTER, &conn.control_permissions) {
-                                conn.send_printer_request(data).await;
-                            } else {
-                                conn.send_remote_printing_disallowed().await;
-                            }
                         }
                         _ => {}
                     }
@@ -2228,7 +2202,8 @@ impl Connection {
             self.keyboard = false;
             let is_existing_dir = !dir.is_empty() && std::path::Path::new(&dir).is_dir();
             #[cfg(target_os = "android")]
-            let is_existing_dir = is_existing_dir || fs::android::is_path(std::path::Path::new(&dir));
+            let is_existing_dir =
+                is_existing_dir || fs::android::is_path(std::path::Path::new(&dir));
             #[cfg(target_os = "android")]
             let is_allowed_dir =
                 is_existing_dir && crate::common::is_peer_path_allowed_async(&dir, false).await;
@@ -2724,16 +2699,6 @@ impl Connection {
 
     #[inline]
     pub fn is_permission_enabled_locally(enable_prefix_option: &str) -> bool {
-        #[cfg(feature = "flutter")]
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            let access_mode = Config::get_option("access-mode");
-            if access_mode == "full" {
-                return true;
-            } else if access_mode == "view" {
-                return false;
-            }
-        }
         config::option2bool(
             enable_prefix_option,
             &Config::get_option(enable_prefix_option),
@@ -2904,12 +2869,6 @@ impl Connection {
                     {
                         allow_err!(tx_from_cm_clone.send(Data::CmErr(err.to_string())));
                     }
-                }
-            });
-            #[cfg(all(windows, feature = "flutter"))]
-            std::thread::spawn(move || {
-                if crate::is_server() && !crate::check_process("--tray", false) {
-                    crate::platform::run_as_user(vec!["--tray"]).ok();
                 }
             });
         }
@@ -3176,48 +3135,6 @@ impl Connection {
                 }
             }
         } else if let Some(message::Union::SwitchSidesResponse(_s)) = msg.union {
-            #[cfg(feature = "flutter")]
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            if let Some(lr) = _s.lr.clone().take() {
-                SWITCH_SIDES_UUID
-                    .lock()
-                    .unwrap()
-                    .retain(|_, v| v.0.elapsed() < SWITCH_SIDES_UUID_TTL);
-                let uuid_old = SWITCH_SIDES_UUID.lock().unwrap().remove(&lr.my_id);
-                if let Ok(uuid) = uuid::Uuid::from_slice(_s.uuid.to_vec().as_ref()) {
-                    if let Some((_instant, uuid_old)) = uuid_old {
-                        if uuid == uuid_old {
-                            if lr.union.is_some() {
-                                log::warn!(
-                                    "Rejected switch sides response for non-remote-desktop session; closing connection"
-                                );
-                                self.send_login_error("Connection not allowed").await;
-                                return false;
-                            }
-                            self.reset_session_scope_for_login();
-                            self.handle_login_request_without_validation(&lr).await;
-                            // Switching sides authorizes without a password, so it must not bypass
-                            // the whitelist, which can be a locked policy pushed by the server.
-                            if !self.check_id_whitelist().await {
-                                return false;
-                            }
-                            self.from_switch = true;
-                            self.trusted_device = None;
-                            self.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::SwitchSides);
-                            if !self.send_logon_response_and_keep_alive().await {
-                                return false;
-                            }
-                            self.try_start_cm(
-                                lr.my_id.clone(),
-                                lr.my_name.clone(),
-                                self.authorized,
-                            );
-                            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                            self.try_start_cm_ipc();
-                        }
-                    }
-                }
-            }
         } else if self.authorized {
             if self.port_forward_socket.is_some() {
                 return true;
@@ -3431,26 +3348,6 @@ impl Connection {
                     if self.should_handle_text_clipboard_message() && self.clipboard_enabled() {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
                         update_clipboard(vec![cb], ClipboardSide::Host);
-                        // ios as the controlled side is actually not supported for now.
-                        // The following code is only used to preserve the logic of handling text clipboard on mobile.
-                        #[cfg(target_os = "ios")]
-                        {
-                            let content = if cb.compress {
-                                hbb_common::compress::decompress(&cb.content)
-                            } else {
-                                cb.content.into()
-                            };
-                            if let Ok(content) = String::from_utf8(content) {
-                                let data =
-                                    HashMap::from([("name", "clipboard"), ("content", &content)]);
-                                if let Ok(data) = serde_json::to_string(&data) {
-                                    let _ = crate::flutter::push_global_event(
-                                        crate::flutter::APP_TYPE_MAIN,
-                                        data,
-                                    );
-                                }
-                            }
-                        }
                         #[cfg(target_os = "android")]
                         crate::clipboard::handle_msg_clipboard(cb);
                     }
@@ -4022,26 +3919,6 @@ impl Connection {
                                 .map(|a| allow_err!(a.send(MediaData::AudioFormat(format))));
                         }
                     }
-                    #[cfg(feature = "flutter")]
-                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    Some(misc::Union::SwitchSidesRequest(s)) => {
-                        if let Ok(uuid) = uuid::Uuid::from_slice(&s.uuid.to_vec()[..]) {
-                            if crate::server::insert_pending_switch_sides_uuid(
-                                self.lr.my_id.clone(),
-                                uuid.clone(),
-                            ) {
-                                crate::run_me(vec![
-                                    "--connect",
-                                    &self.lr.my_id,
-                                    "--switch_uuid",
-                                    uuid.to_string().as_ref(),
-                                ])
-                                .ok();
-                            }
-                            self.on_close("switch sides", false).await;
-                            return false;
-                        }
-                    }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     Some(misc::Union::ChangeResolution(r)) => {
                         if !self.view_camera {
@@ -4150,7 +4027,9 @@ impl Connection {
                         self.refresh_video_display(Some(request.display as usize));
                     }
                 }
-                Some(message::Union::PortForwardChannel(ch)) => self.handle_port_forward_channel(ch),
+                Some(message::Union::PortForwardChannel(ch)) => {
+                    self.handle_port_forward_channel(ch)
+                }
                 Some(message::Union::TerminalAction(action)) => {
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     allow_err!(self.handle_terminal_action(action).await);
@@ -5356,7 +5235,7 @@ impl Connection {
             lock_screen().await;
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let data = if self.chat_unanswered || self.file_transferred && cfg!(feature = "flutter") {
+        let data = if self.chat_unanswered {
             ipc::Data::Disconnected
         } else {
             ipc::Data::Close
@@ -6293,32 +6172,6 @@ impl Connection {
         try_empty_clipboard_files(ClipboardSide::Host, self.inner.id());
     }
 
-    #[cfg(all(target_os = "windows", feature = "flutter"))]
-    async fn send_printer_request(&mut self, data: Vec<u8>) {
-        // This path is only used to identify the printer job.
-        let path = format!("RustDesk://FsJob//Printer/{}", get_time());
-
-        let msg = fs::new_send(0, fs::JobType::Printer, path.clone(), 1, false);
-        self.send(msg).await;
-        self.printer_data
-            .retain(|(t, _, _)| t.elapsed().as_secs() < 60);
-        self.printer_data.push((Instant::now(), path, data));
-    }
-
-    #[cfg(all(target_os = "windows", feature = "flutter"))]
-    async fn send_remote_printing_disallowed(&mut self) {
-        let mut msg_out = Message::new();
-        let res = MessageBox {
-            msgtype: "custom-nook-nocancel-hasclose".to_owned(),
-            title: "remote-printing-disallowed-tile-tip".to_owned(),
-            text: "remote-printing-disallowed-text-tip".to_owned(),
-            link: "".to_owned(),
-            ..Default::default()
-        };
-        msg_out.set_message_box(res);
-        self.send(msg_out).await;
-    }
-
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     async fn update_terminal_persistence(&mut self, persistent: bool) {
         self.terminal_persistent = persistent;
@@ -6380,53 +6233,6 @@ impl Connection {
 
         Ok(())
     }
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn insert_switch_sides_uuid(id: String, uuid: uuid::Uuid) {
-    SWITCH_SIDES_UUID
-        .lock()
-        .unwrap()
-        .insert(id, (tokio::time::Instant::now(), uuid));
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn insert_pending_switch_sides_uuid(id: String, uuid: uuid::Uuid) -> bool {
-    let mut uuids = PENDING_SWITCH_SIDES_UUID.lock().unwrap();
-    uuids.retain(|_, (instant, _, _)| instant.elapsed() < SWITCH_SIDES_UUID_TTL);
-    if uuids.get(&id).map(|(_, stored_uuid, _)| stored_uuid) == Some(&uuid) {
-        return false;
-    }
-    uuids.insert(id, (tokio::time::Instant::now(), uuid, false));
-    true
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn has_pending_switch_sides_uuid(id: &str, uuid: &uuid::Uuid) -> bool {
-    let mut uuids = PENDING_SWITCH_SIDES_UUID.lock().unwrap();
-    uuids.retain(|_, (instant, _, _)| instant.elapsed() < SWITCH_SIDES_UUID_TTL);
-    uuids
-        .get(id)
-        .map(|(_, stored_uuid, claimed)| stored_uuid == uuid && !*claimed)
-        == Some(true)
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn claim_pending_switch_sides_uuid(id: &str, uuid: &uuid::Uuid) -> bool {
-    let mut uuids = PENDING_SWITCH_SIDES_UUID.lock().unwrap();
-    uuids.retain(|_, (instant, _, _)| instant.elapsed() < SWITCH_SIDES_UUID_TTL);
-    // Keep claimed entries until expiry so replaying a request cannot launch another connection.
-    if let Some((_, stored_uuid, claimed)) = uuids.get_mut(id) {
-        if stored_uuid == uuid && !*claimed {
-            *claimed = true;
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -6754,19 +6560,6 @@ fn start_wakelock_thread() -> std::sync::mpsc::Sender<(usize, usize)> {
         }
     });
     tx
-}
-
-#[cfg(all(target_os = "windows", feature = "flutter"))]
-pub fn on_printer_data(data: Vec<u8>) {
-    crate::server::AUTHED_CONNS
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|c| c.printer)
-        .next()
-        .map(|c| {
-            c.sender.send(Data::PrinterData(data)).ok();
-        });
 }
 
 #[cfg(windows)]
@@ -7382,26 +7175,6 @@ mod test {
             Err(_) => panic!("the handshake waited for a payload the header should have refused"),
         }
         assert_eq!(unauthorized_count(), 0);
-    }
-
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    #[test]
-    fn test_pending_switch_sides_uuid_is_claimed_once() {
-        let id = uuid::Uuid::new_v4().to_string();
-        let uuid = uuid::Uuid::new_v4();
-        let other_uuid = uuid::Uuid::new_v4();
-        assert!(insert_pending_switch_sides_uuid(id.clone(), uuid.clone()));
-
-        assert!(!insert_pending_switch_sides_uuid(id.clone(), uuid.clone()));
-        assert!(has_pending_switch_sides_uuid(&id, &uuid));
-        assert!(!has_pending_switch_sides_uuid(&id, &other_uuid));
-        assert!(!claim_pending_switch_sides_uuid("other-peer", &uuid));
-        assert!(!claim_pending_switch_sides_uuid(&id, &other_uuid));
-        assert!(claim_pending_switch_sides_uuid(&id, &uuid));
-        assert!(!has_pending_switch_sides_uuid(&id, &uuid));
-        assert!(!claim_pending_switch_sides_uuid(&id, &uuid));
-        assert!(!insert_pending_switch_sides_uuid(id, uuid));
     }
 
     #[test]

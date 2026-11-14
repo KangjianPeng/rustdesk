@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-echo $MACOS_CODESIGN_IDENTITY
-cargo install flutter_rust_bridge_codegen --version 1.80.1 --features uuid --locked
-cd flutter; flutter pub get; cd -
-~/.cargo/bin/flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs --dart-output ./flutter/lib/generated_bridge.dart --c-output ./flutter/macos/Runner/bridge_generated.h
-./build.py --flutter
-rm rustdesk-$VERSION.dmg
-# security find-identity -v
-codesign --force --options runtime -s $MACOS_CODESIGN_IDENTITY --deep --strict ./flutter/build/macos/Build/Products/Release/RustDesk.app -vvv
-create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-$VERSION.dmg ./flutter/build/macos/Build/Products/Release/RustDesk.app
-codesign --force --options runtime -s $MACOS_CODESIGN_IDENTITY --deep --strict rustdesk-$VERSION.dmg -vvv
-# notarize the rustdesk-${{ env.VERSION }}.dmg
-rcodesign notary-submit --api-key-path ~/.p12/api-key.json  --staple rustdesk-$VERSION.dmg
+: "${VERSION:?VERSION must be set}"
+
+./build.py --macos-app "$@"
+
+app="target/dx/rustdesk/bundle/macos/Rustdesk.app"
+if [[ ! -d "$app" ]]; then
+  printf 'Dioxus macOS bundle was not found: %s\n' "$app" >&2
+  exit 1
+fi
+
+if [[ -n "${MACOS_CODESIGN_IDENTITY:-}" ]]; then
+  codesign --force --options runtime -s "$MACOS_CODESIGN_IDENTITY" --deep --strict "$app" -vvv
+fi
+
+dmg="rustdesk-${VERSION}.dmg"
+create-dmg --icon "Rustdesk.app" 200 190 --hide-extension "Rustdesk.app" --window-size 800 400 --app-drop-link 600 185 "$dmg" "$app"
+
+if [[ -n "${MACOS_CODESIGN_IDENTITY:-}" ]]; then
+  codesign --force --options runtime -s "$MACOS_CODESIGN_IDENTITY" --deep --strict "$dmg" -vvv
+  if [[ -f "${MACOS_NOTARIZE_API_KEY:-$HOME/.p12/api-key.json}" ]]; then
+    rcodesign notary-submit --api-key-path "${MACOS_NOTARIZE_API_KEY:-$HOME/.p12/api-key.json}" --staple "$dmg"
+  fi
+fi

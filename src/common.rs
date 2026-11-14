@@ -1143,15 +1143,6 @@ fn process_software_update_check_response(bytes: Bytes) -> ResultType<()> {
     let latest_release_version = display_version_from_release_id(&release_id)?;
 
     if get_version_number(&latest_release_version) > get_version_number(crate::VERSION) {
-        #[cfg(feature = "flutter")]
-        {
-            let mut m = HashMap::new();
-            m.insert("name", "check_software_update_finish");
-            m.insert("url", &response_url);
-            if let Ok(data) = serde_json::to_string(&m) {
-                let _ = crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, data);
-            }
-        }
         *SOFTWARE_UPDATE_URL.lock().unwrap() = response_url;
     } else {
         clear_software_update_url();
@@ -2870,7 +2861,7 @@ pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
                 log::error!("Failed to get public IPv6 address: {}", e);
             }
             Err(_) => {
-                log::warn!("No STUN server answered for IPv6 within {STUN_IPV6_TIMEOUT_MS}ms");
+                log::debug!("No STUN server answered for IPv6 within {STUN_IPV6_TIMEOUT_MS}ms");
             }
         };
     }))

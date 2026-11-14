@@ -6,8 +6,6 @@
 use dbus::blocking::Connection;
 use dbus_crossroads::{Crossroads, IfaceBuilder};
 use hbb_common::log;
-#[cfg(feature = "flutter")]
-use std::collections::HashMap;
 use std::{error::Error, fmt, time::Duration};
 
 const DBUS_NAME: &str = "org.rustdesk.rustdesk";
@@ -70,22 +68,6 @@ fn handle_client_message(builder: &mut IfaceBuilder<()>) {
         (DBUS_METHOD_NEW_CONNECTION_ID,),
         (DBUS_METHOD_RETURN,),
         move |_, _, (_uni_links,): (String,)| {
-            #[cfg(feature = "flutter")]
-            {
-                use crate::flutter;
-                let data = HashMap::from([
-                    ("name", "on_url_scheme_received"),
-                    ("url", _uni_links.as_str()),
-                ]);
-                let event = serde_json::ser::to_string(&data).unwrap_or("".to_string());
-                match crate::flutter::push_global_event(flutter::APP_TYPE_MAIN, event) {
-                    None => log::error!("failed to find main event stream"),
-                    Some(false) => {
-                        log::error!("failed to add dbus message to flutter global dbus stream.")
-                    }
-                    Some(true) => {}
-                }
-            }
             return Ok((DBUS_METHOD_RETURN_SUCCESS.to_string(),));
         },
     );

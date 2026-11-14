@@ -52,6 +52,8 @@ pub const STRIDE_ALIGN: usize = 64; // commonly used in libvpx vpx_img_alloc cal
 pub const HW_STRIDE_ALIGN: usize = 0; // recommended by av_frame_get_buffer
 
 pub mod aom;
+#[cfg(all(feature = "dav1d", target_os = "linux"))]
+pub mod av1_decoder;
 #[cfg(not(any(target_os = "ios")))]
 pub mod camera;
 pub mod record;

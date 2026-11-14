@@ -13,11 +13,11 @@ mod ipc_drm;
 // `crate::ipc::DrmDisplayInfo`) keep working, and so the `Data` variants can name the two
 // payload types.
 #[cfg(all(target_os = "linux", feature = "drm"))]
-pub use ipc_drm::{start_drm, DmabufDesc, DrmDisplayInfo};
+pub(crate) use ipc_drm::connect_drm;
 #[cfg(all(target_os = "linux", feature = "drm"))]
 pub(crate) use ipc_drm::DrmConn;
 #[cfg(all(target_os = "linux", feature = "drm"))]
-pub(crate) use ipc_drm::connect_drm;
+pub use ipc_drm::{start_drm, DmabufDesc, DrmDisplayInfo};
 
 use crate::{
     common::{is_server, CheckTestNatType},
@@ -27,6 +27,7 @@ use crate::{
     trusted_devices::authority,
     ui_interface::{get_local_option, set_local_option},
 };
+use base::config::keys::{self, OPTION_ALLOW_WEBSOCKET};
 use bytes::Bytes;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use clipboard::ClipboardFile;
@@ -46,7 +47,8 @@ use hbb_common::{
     tokio_util::codec::Framed,
     ResultType,
 };
-use base::config::keys::{self, OPTION_ALLOW_WEBSOCKET};
+#[cfg(target_os = "macos")]
+use ipc_auth::authorize_user_server_process;
 #[cfg(windows)]
 pub(crate) use ipc_auth::authorize_windows_portable_service_ipc_connection;
 #[cfg(windows)]
@@ -55,8 +57,6 @@ pub(crate) use ipc_auth::ensure_peer_executable_matches_current_by_pid_opt;
 pub(crate) use ipc_auth::log_rejected_windows_ipc_connection;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use ipc_auth::{active_uid, authorize_service_scoped_ipc_connection};
-#[cfg(target_os = "macos")]
-use ipc_auth::authorize_user_server_process;
 #[cfg(windows)]
 use ipc_auth::{
     authorize_windows_main_ipc_connection, portable_service_listener_security_attributes,
@@ -326,14 +326,6 @@ pub enum DataPortableService {
     CmShowElevation(bool),
 }
 
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-pub enum SwitchSidesUuidAction {
-    Check,
-    Consume,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "t", content = "c")]
 pub enum Data {
@@ -404,15 +396,6 @@ pub enum Data {
     Empty,
     Disconnected,
     DataPortableService(DataPortableService),
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    SwitchSidesRequest(String),
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    SwitchSidesUuid(String, String, SwitchSidesUuidAction, Option<bool>),
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    SwitchSidesBack,
     UrlLink(String),
     VoiceCallIncoming,
     StartVoiceCall,
@@ -491,22 +474,13 @@ pub enum Data {
         result: Result<Vec<u8>, String>,
     },
     CheckHwcodec,
-    #[cfg(feature = "flutter")]
-    VideoConnCount(Option<usize>),
     // Although the key is not necessary, it is used to avoid hardcoding the key.
     WaylandScreencastRestoreToken((String, String)),
     HwCodecConfig(Option<String>),
     TrustedDeviceManagement(Box<authority::Request>),
     TrustedDeviceResponse(Result<crate::trusted_devices::authority::Response, String>),
     SecurityConfigError(String),
-    #[cfg(all(target_os = "windows", feature = "flutter"))]
-    PrinterData(Vec<u8>),
     InstallOption(Option<(String, String)>),
-    #[cfg(all(
-        feature = "flutter",
-        not(any(target_os = "android", target_os = "ios"))
-    ))]
-    ControllingSessionCount(usize),
     #[cfg(target_os = "linux")]
     TerminalSessionCount(usize),
     #[cfg(target_os = "windows")]
@@ -540,14 +514,19 @@ pub enum Data {
     /// Client -> service, first on `_drm`: whether the service may wake sleeping displays before
     /// it answers. The cache warm at every `--server` start says no: no peer is waiting for it.
     #[cfg(all(target_os = "linux", feature = "drm"))]
-    DrmHello { wake: bool },
+    DrmHello {
+        wake: bool,
+    },
     /// Client -> service: begin streaming the chosen display.
     #[cfg(all(target_os = "linux", feature = "drm"))]
     // `need_cpu` is set by an unprivileged consumer that could not open a render-node convert context
     // (drmtap_open_render failed, e.g. no /dev/dri/renderD* access). The service then streams the
     // CPU-converted `DrmFrame` path for this connection instead of a dma-buf fd the consumer cannot
     // detile, so a render-node-less seat still captures instead of losing the stream.
-    DrmStart { display: i32, need_cpu: bool },
+    DrmStart {
+        display: i32,
+        need_cpu: bool,
+    },
     /// Service -> client: the enumerated DRM displays (sent once, before frames).
     #[cfg(all(target_os = "linux", feature = "drm"))]
     DrmDisplayList(Vec<DrmDisplayInfo>),
@@ -942,16 +921,6 @@ async fn handle(data: Data, stream: &mut Connection) {
             }
             _ => {}
         },
-        #[cfg(feature = "flutter")]
-        Data::VideoConnCount(None) => {
-            let n = crate::server::AUTHED_CONNS
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|x| x.conn_type == crate::server::AuthConnType::Remote)
-                .count();
-            allow_err!(stream.send(&Data::VideoConnCount(Some(n))).await);
-        }
         Data::Config((name, value)) => match value {
             None => {
                 let value;
@@ -1161,38 +1130,6 @@ async fn handle(data: Data, stream: &mut Connection) {
             crate::rendezvous_mediator::NEEDS_DEPLOY.store(false, Ordering::SeqCst);
             crate::rendezvous_mediator::RendezvousMediator::restart();
         }
-        #[cfg(feature = "flutter")]
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        Data::SwitchSidesRequest(id) => {
-            let uuid = uuid::Uuid::new_v4();
-            crate::server::insert_switch_sides_uuid(id, uuid.clone());
-            crate::hbbs_http::sync::register_switch_grant(uuid.to_string());
-            allow_err!(
-                stream
-                    .send(&Data::SwitchSidesRequest(uuid.to_string()))
-                    .await
-            );
-        }
-        #[cfg(feature = "flutter")]
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        Data::SwitchSidesUuid(uuid, id, action, None) => {
-            let allowed = uuid
-                .parse::<uuid::Uuid>()
-                .map(|uuid| match action {
-                    SwitchSidesUuidAction::Check => {
-                        crate::server::has_pending_switch_sides_uuid(&id, &uuid)
-                    }
-                    SwitchSidesUuidAction::Consume => {
-                        crate::server::claim_pending_switch_sides_uuid(&id, &uuid)
-                    }
-                })
-                .unwrap_or(false);
-            allow_err!(
-                stream
-                    .send(&Data::SwitchSidesUuid(uuid, id, action, Some(allowed)))
-                    .await
-            );
-        }
         #[cfg(windows)]
         Data::ControlledSessionCount(_) => {
             allow_err!(
@@ -1212,13 +1149,6 @@ async fn handle(data: Data, stream: &mut Connection) {
                     )))
                     .await
             );
-        }
-        #[cfg(all(
-            feature = "flutter",
-            not(any(target_os = "android", target_os = "ios"))
-        ))]
-        Data::ControllingSessionCount(count) => {
-            crate::updater::update_controlling_session_count(count);
         }
         #[cfg(target_os = "linux")]
         Data::TerminalSessionCount(_) => {
@@ -1564,9 +1494,7 @@ pub async fn connect_for_uid(
     let path = Config::ipc_path_for_uid(uid, postfix);
     let conn = connect_with_path(ms_timeout, &path).await?;
     #[cfg(target_os = "macos")]
-    if postfix.is_empty()
-        && !authorize_user_server_process(conn.peer_uid(), conn.peer_pid(), uid)
-    {
+    if postfix.is_empty() && !authorize_user_server_process(conn.peer_uid(), conn.peer_pid(), uid) {
         bail!("Rejected user IPC peer for uid {}", uid);
     }
     Ok(conn)
@@ -1864,12 +1792,11 @@ async fn set_permanent_password_with_ack_async(v: String) -> ResultType<bool> {
     Ok(false)
 }
 
-#[cfg(feature = "flutter")]
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn set_unlock_pin(v: String, translate: bool) -> ResultType<()> {
     let v = v.trim().to_owned();
     let min_len = 4;
-    let max_len = crate::ui_interface::max_encrypt_len();
+    let max_len = hbb_common::config::ENCRYPT_MAX_LEN;
     let len = v.chars().count();
     if !v.is_empty() {
         if len < min_len {
@@ -1889,43 +1816,6 @@ pub fn set_unlock_pin(v: String, translate: bool) -> ResultType<()> {
     }
     Config::set_unlock_pin(&v);
     set_config("unlock-pin", v)
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn get_unlock_pin() -> String {
-    if let Ok(Some(v)) = get_config("unlock-pin") {
-        Config::set_unlock_pin(&v);
-        v
-    } else {
-        Config::get_unlock_pin()
-    }
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub async fn trusted_devices(request: authority::Request) -> ResultType<String> {
-    const TIMEOUT_MS: u64 = 1000;
-    let list = matches!(request, authority::Request::List);
-    let mut connection = connect(TIMEOUT_MS, "").await?;
-    connection
-        .send(&Data::TrustedDeviceManagement(Box::new(request)))
-        .await?;
-    let response = match connection.next_timeout(TIMEOUT_MS).await? {
-        Some(Data::TrustedDeviceResponse(result)) => {
-            match result.map_err(|error| hbb_common::anyhow::anyhow!(error))? {
-                authority::Response::Devices(devices) if list => devices,
-                authority::Response::Done if !list => String::new(),
-                _ => bail!("Invalid trusted-device management response"),
-            }
-        }
-        _ => bail!("The host did not confirm the trusted-device operation"),
-    };
-    #[cfg(target_os = "windows")]
-    if !list {
-        sync_security_config_from_server(&mut connection).await?;
-    }
-    Ok(response)
 }
 
 #[cfg(target_os = "windows")]
@@ -2029,6 +1919,10 @@ pub fn set_option(key: &str, value: &str) {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
+    set_options_async(value).await
+}
+
+pub async fn set_options_async(value: HashMap<String, String>) -> ResultType<()> {
     let _nat = CheckTestNatType::new();
     let affected = crate::trusted_devices::config::changes_authentication(&value);
     let connection = connect(1000, "").await;
@@ -2285,17 +2179,6 @@ pub async fn clear_wayland_screencast_restore_token(key: String) -> ResultType<b
         return Ok(v.is_empty());
     }
     return Ok(false);
-}
-
-#[cfg(all(
-    feature = "flutter",
-    not(any(target_os = "android", target_os = "ios"))
-))]
-#[tokio::main(flavor = "current_thread")]
-pub async fn update_controlling_session_count(count: usize) -> ResultType<()> {
-    let mut c = connect(1000, "").await?;
-    c.send(&Data::ControllingSessionCount(count)).await?;
-    Ok(())
 }
 
 #[cfg(target_os = "linux")]

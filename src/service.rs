@@ -1,3 +1,4 @@
+#[cfg(target_os = "macos")]
 use librustdesk::*;
 
 #[cfg(not(target_os = "macos"))]

@@ -5,6 +5,10 @@ use std::{
     time::Instant,
 };
 
+#[cfg(not(all(feature = "dav1d", target_os = "linux")))]
+use crate::aom::{self, AomDecoder};
+#[cfg(all(feature = "dav1d", target_os = "linux"))]
+use crate::av1_decoder::Av1Decoder as AomDecoder;
 #[cfg(feature = "hwcodec")]
 use crate::hwcodec::*;
 #[cfg(feature = "mediacodec")]
@@ -12,7 +16,7 @@ use crate::mediacodec::{MediaCodecDecoder, H264_DECODER_SUPPORT, H265_DECODER_SU
 #[cfg(feature = "vram")]
 use crate::vram::*;
 use crate::{
-    aom::{self, AomDecoder, AomEncoder, AomEncoderConfig},
+    aom::{AomEncoder, AomEncoderConfig},
     common::GoogleImage,
     vpxcodec::{self, VpxDecoder, VpxDecoderConfig, VpxEncoder, VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, EncodeInput, EncodeYuvFormat, ImageRgb, ImageTexture,
@@ -742,23 +746,28 @@ impl Decoder {
         rgb: &mut ImageRgb,
         chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
-        let mut last_frame = aom::Image::new();
-        for av1 in av1s.frames.iter() {
-            for frame in decoder.decode(&av1.data)? {
+        #[cfg(all(feature = "dav1d", target_os = "linux"))]
+        return decoder.handle_frame(av1s, rgb, chroma);
+        #[cfg(not(all(feature = "dav1d", target_os = "linux")))]
+        {
+            let mut last_frame = aom::Image::new();
+            for av1 in av1s.frames.iter() {
+                for frame in decoder.decode(&av1.data)? {
+                    drop(last_frame);
+                    last_frame = frame;
+                }
+            }
+            for frame in decoder.flush()? {
                 drop(last_frame);
                 last_frame = frame;
             }
-        }
-        for frame in decoder.flush()? {
-            drop(last_frame);
-            last_frame = frame;
-        }
-        if last_frame.is_null() {
-            Ok(false)
-        } else {
-            *chroma = Some(last_frame.chroma());
-            last_frame.to(rgb);
-            Ok(true)
+            if last_frame.is_null() {
+                Ok(false)
+            } else {
+                *chroma = Some(last_frame.chroma());
+                last_frame.to(rgb);
+                Ok(true)
+            }
         }
     }
 

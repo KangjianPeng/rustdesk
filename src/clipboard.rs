@@ -2,8 +2,8 @@
 use arboard::{ClipboardData, ClipboardFormat};
 #[cfg(target_os = "linux")]
 use arboard::{LinuxClipboardKind, SetExtLinux};
-use hbb_common::{bail, log, ResultType};
 use base::message_proto::*;
+use hbb_common::{bail, log, ResultType};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -13,17 +13,6 @@ pub const CLIPBOARD_NAME: &'static str = "clipboard";
 #[cfg(feature = "unix-file-copy-paste")]
 pub const FILE_CLIPBOARD_NAME: &'static str = "file-clipboard";
 pub const CLIPBOARD_INTERVAL: u64 = 333;
-
-pub const OPTION_ALLOW_SYNC_CLIPBOARD_BETWEEN_SESSIONS: &str =
-    "allow-sync-clipboard-between-sessions";
-
-#[cfg(all(feature = "flutter", not(any(target_os = "android", target_os = "ios"))))]
-pub fn is_sync_clipboard_between_sessions_enabled() -> bool {
-    hbb_common::config::option2bool(
-        OPTION_ALLOW_SYNC_CLIPBOARD_BETWEEN_SESSIONS,
-        &hbb_common::config::LocalConfig::get_option(OPTION_ALLOW_SYNC_CLIPBOARD_BETWEEN_SESSIONS),
-    )
-}
 
 // This format is used to store the flag in the clipboard.
 const RUSTDESK_CLIPBOARD_OWNER_FORMAT: &'static str = "dyn.com.rustdesk.owner";
@@ -516,8 +505,8 @@ impl ClipboardContext {
                 // Don't use `base::platform::linux::is_kde()` here.
                 // It's not correct in the server process.
                 #[cfg(target_os = "linux")]
-                let is_kde_x11 = base::platform::linux::is_kde_session()
-                    && crate::platform::linux::is_x11();
+                let is_kde_x11 =
+                    base::platform::linux::is_kde_session() && crate::platform::linux::is_x11();
                 #[cfg(target_os = "macos")]
                 let is_kde_x11 = false;
                 let clear_holder_text = if is_kde_x11 {
@@ -570,7 +559,10 @@ pub fn get_current_clipboard_msg(
     let ctx = match ClipboardContext::new() {
         Ok(ctx) => ctx,
         Err(err) => {
-            log::error!("Failed to create clipboard context for initial sync: {}", err);
+            log::error!(
+                "Failed to create clipboard context for initial sync: {}",
+                err
+            );
             return None;
         }
     };
@@ -632,10 +624,8 @@ pub use proto::get_msg_if_not_support_multi_clip;
 mod proto {
     #[cfg(not(target_os = "android"))]
     use arboard::ClipboardData;
-    use hbb_common::{
-        compress::{compress as compress_func, decompress},
-    };
     use base::message_proto::{Clipboard, ClipboardFormat, Message, MultiClipboards};
+    use hbb_common::compress::{compress as compress_func, decompress};
 
     fn plain_to_proto(s: String, format: ClipboardFormat) -> Clipboard {
         let compressed = compress_func(s.as_bytes());
@@ -700,11 +690,7 @@ mod proto {
     fn special_to_proto(d: Vec<u8>, s: String) -> Clipboard {
         let compressed = compress_func(&d);
         let compress = compressed.len() < d.len();
-        let content = if compress {
-            compressed
-        } else {
-            d
-        };
+        let content = if compress { compressed } else { d };
         Clipboard {
             compress,
             content: content.into(),
@@ -1072,7 +1058,10 @@ pub mod clipboard_listener {
         if let Some((shutdown, h)) = listener.handle.take() {
             log::warn!("Cleaning up stale clipboard listener handle");
             if let Err(e) = h.join() {
-                log::error!("Clipboard listener thread panicked during stale cleanup: {:?}", e);
+                log::error!(
+                    "Clipboard listener thread panicked during stale cleanup: {:?}",
+                    e
+                );
             }
             drop(shutdown);
         }

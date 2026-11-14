@@ -1,0 +1,12 @@
+[application]
+name = "rustdesk"
+asset_dir = "assets"
+
+[bundle]
+identifier = "com.rustdesk.RustDesk"
+publisher = "RustDesk"
+icon = ["res/icon.png"]
+category = "Utility"
+
+[web.app]
+title = "RustDesk"

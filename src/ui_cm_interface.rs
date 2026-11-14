@@ -4,24 +4,28 @@ use crate::ipc::Connection;
 use crate::ipc::{self, Data};
 #[cfg(target_os = "windows")]
 use crate::{clipboard::ClipboardSide, ipc::ClipboardNonFile};
+#[cfg(target_os = "android")]
+use base::config::keys::OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW;
 #[cfg(target_os = "windows")]
 use base::config::keys::*;
 #[cfg(not(any(target_os = "ios")))]
 use base::fs::serialize_transfer_job;
 use base::{
-    config::keys::{OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW, OPTION_FILE_TRANSFER_MAX_FILES},
+    config::keys::OPTION_FILE_TRANSFER_MAX_FILES,
     fs::{self, get_string, is_write_need_confirmation, new_send_confirm, DigestCheckResult},
     message_proto::*,
 };
 #[cfg(target_os = "windows")]
 use clipboard::ContextSend;
+#[cfg(target_os = "android")]
+use hbb_common::config::option2bool;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::tokio::sync::mpsc::unbounded_channel;
 #[cfg(target_os = "windows")]
 use hbb_common::tokio::sync::Mutex as TokioMutex;
 use hbb_common::{
-    allow_err, bail,
-    config::{option2bool, Config},
+    allow_err,
+    config::Config,
     log,
     protobuf::Message as _,
     tokio::{
@@ -32,7 +36,7 @@ use hbb_common::{
     ResultType,
 };
 use serde_derive::Serialize;
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use std::iter::FromIterator;
 #[cfg(not(any(target_os = "ios")))]
 use std::path::PathBuf;
@@ -404,31 +408,6 @@ pub fn send_chat(id: i32, text: String) {
 }
 
 #[inline]
-#[cfg(not(any(target_os = "ios")))]
-pub fn switch_permission(id: i32, name: String, enabled: bool) {
-    #[cfg(target_os = "android")]
-    let is_keyboard_permission = name == "keyboard";
-    #[cfg(not(target_os = "android"))]
-    let is_keyboard_permission = false;
-    if !option2bool(
-        OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW,
-        &crate::get_builtin_option(OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW),
-    ) && !is_keyboard_permission
-    {
-        log::info!(
-            "blocked cm switch_permission by policy, conn_id={}, permission={}, enabled={}",
-            id,
-            name,
-            enabled
-        );
-        return;
-    }
-    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
-        allow_err!(client.tx.send(Data::SwitchPermission { name, enabled }));
-    };
-}
-
-#[inline]
 #[cfg(target_os = "android")]
 pub fn switch_permission_all(name: String, enabled: bool) {
     if name != "keyboard"
@@ -452,7 +431,7 @@ pub fn switch_permission_all(name: String, enabled: bool) {
     }
 }
 
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 #[inline]
 pub fn get_clients_state() -> String {
     let clients = CLIENTS.read().unwrap();
@@ -461,25 +440,10 @@ pub fn get_clients_state() -> String {
 }
 
 #[inline]
-pub fn get_clients_length() -> usize {
-    let clients = CLIENTS.read().unwrap();
-    clients.len()
-}
-
-#[inline]
 #[cfg(target_os = "android")]
 pub fn has_active_clients() -> bool {
     let clients = CLIENTS.read().unwrap();
     clients.values().any(|c| !c.disconnected)
-}
-
-#[inline]
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub fn switch_back(id: i32) {
-    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
-        allow_err!(client.tx.send(Data::SwitchSidesBack));
-    };
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1796,7 +1760,7 @@ pub fn elevate_portable(_id: i32) {
     }
 }
 
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+#[cfg(any(target_os = "android", target_os = "ios", feature = "dioxus-ui"))]
 #[inline]
 pub fn handle_incoming_voice_call(id: i32, accept: bool) {
     if let Some(client) = CLIENTS.read().unwrap().get(&id) {
@@ -1806,7 +1770,7 @@ pub fn handle_incoming_voice_call(id: i32, accept: bool) {
     };
 }
 
-#[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
+#[cfg(any(target_os = "android", target_os = "ios", feature = "dioxus-ui"))]
 #[inline]
 pub fn close_voice_call(id: i32) {
     if let Some(client) = CLIENTS.read().unwrap().get(&id) {
@@ -1821,19 +1785,6 @@ pub fn quit_cm() {
     // in case of std::process::exit not work
     log::info!("quit cm");
     CLIENTS.write().unwrap().clear();
-    // `quit_gui()` ends the process on Windows and macOS, but on Linux it calls
-    // `gtk_main_quit()`, which has no effect in the Flutter connection manager:
-    // `flutter/linux/main.cc` runs `g_application_run()` (GtkApplication), so
-    // `gtk_main()` is never called. Exit directly instead, otherwise this
-    // process keeps running while no longer serving the `_cm` ipc endpoint, so
-    // the server can't reuse it and spawns one more connection manager.
-    //
-    // NOTE: a client merely disconnecting does not come here, the Flutter side
-    // closes the window then, so this is a fallback rather than an explanation
-    // for the stale processes of #15698.
-    #[cfg(all(target_os = "linux", feature = "flutter"))]
-    std::process::exit(0);
-    #[cfg(not(all(target_os = "linux", feature = "flutter")))]
     crate::platform::quit_gui();
 }
 

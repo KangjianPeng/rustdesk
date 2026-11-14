@@ -38,89 +38,79 @@ RustDesk welcomes contribution from everyone. See [CONTRIBUTING.md](docs/CONTRIB
 
 ## Dependencies
 
-Desktop versions use Flutter or Sciter (deprecated) for GUI. This tutorial is for Sciter only, since it is easier and more friendly to start. Check out our [CI](https://github.com/rustdesk/rustdesk/blob/master/.github/workflows/flutter-build.yml) for building the Flutter version.
+The native desktop and Android UI is built with [Dioxus](https://dioxuslabs.com/). Reusable controls come from [rust-ui/ui](https://github.com/rust-ui/ui). The default Cargo features select the Dioxus frontend and choose the desktop or Android renderer for the target.
 
-Please download Sciter dynamic library yourself.
+Desktop uses the experimental Dioxus Native renderer (Blitz/Vello + wgpu), without WebKit. Linux needs a Vulkan-capable graphics driver, Fontconfig and dav1d >= 1.3 (`libfontconfig1-dev libdav1d-dev` on current Debian/Ubuntu). AV1 uses low latency dav1d decoding; other frontends retain their existing decoder.
 
-[Windows](https://raw.githubusercontent.com/c-smile/sciter-sdk/master/bin.win/x64/sciter.dll) |
-[Linux](https://raw.githubusercontent.com/c-smile/sciter-sdk/master/bin.lnx/x64/libsciter-gtk.so) |
-[macOS](https://raw.githubusercontent.com/c-smile/sciter-sdk/master/bin.osx/libsciter.dylib)
+Default builds also include hardware codecs. On Linux, install the FFmpeg development packages (`libavcodec-dev libavformat-dev libavutil-dev`) and a VA-API or NVDEC driver for the GPU. Codec backends are detected before a remote session starts. Hardware decoding depends on the negotiated codec: an Intel UHD 630 supports H.264/H.265 through VA-API, while AV1 uses software decoding on that GPU.
 
 ## Raw Steps to build
 
 - Prepare your Rust development env and C++ build env
 
-- Install [vcpkg](https://github.com/microsoft/vcpkg), and set `VCPKG_ROOT` env variable correctly
+- On Linux, default builds use system media libraries through `pkg-config`; vcpkg is not required.
+  Install the development packages listed below before building. FFmpeg remains responsible for
+  hardware codecs, libvpx/libaom for software video, libyuv for pixel conversion, and libopus for audio.
+  Dioxus Native removes the WebKit dependency; these media libraries still contain C/C++ code.
 
-  - Windows: vcpkg install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
-  - Linux/macOS: vcpkg install libvpx libyuv opus aom
+- On Windows/macOS, install [vcpkg](https://github.com/microsoft/vcpkg) and set `VCPKG_ROOT`
+  explicitly. Windows uses `libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static`;
+  macOS uses `libvpx libyuv opus aom`. Hardware builds also need the FFmpeg ports in `vcpkg.json`.
+  Apple Silicon can use the existing Homebrew fallback for the software media libraries.
 
-- Linux `hwcodec` builds can use the system FFmpeg development packages through `pkg-config`.
-  This links FFmpeg dynamically and avoids requiring PIC static archives:
+- run `cargo run` to launch the default Dioxus UI
+- install the matching Dioxus CLI with `cargo install dioxus-cli --version 0.7.10 --locked`, then run `dx serve --renderer native` for desktop development
 
-  ```sh
-  RUSTDESK_FFMPEG_LINK=system VCPKG_ROOT=$HOME/vcpkg \
-    cargo build --release --features flutter,inline,hwcodec
-  ```
+If `dx serve` fails to create its file watcher with `Too many open files`, check
+`cat /proc/sys/fs/inotify/max_user_instances`. Linux desktop applications and
+editors share this per-user limit; exhausting it also returns this error even
+when the process file-descriptor limit is sufficient. To raise the instance limit
+for the current boot and future boots:
 
-  The default `auto` mode prefers system FFmpeg on Linux and falls back to vcpkg; use
-  `RUSTDESK_FFMPEG_LINK=vcpkg` for a fully vcpkg-backed build.
+```sh
+sudo install -m 644 res/60-rustdesk-dev-inotify.conf /etc/sysctl.d/60-rustdesk-dev-inotify.conf
+sudo sysctl -p /etc/sysctl.d/60-rustdesk-dev-inotify.conf
+```
 
-- run `cargo run`
+Then retry `dx serve --renderer native`. Dioxus CLI 0.7.10 creates a watcher even
+with `--watch false`; that option does not bypass an exhausted instance limit.
 
 ## [Build](https://rustdesk.com/docs/en/dev/build/)
 
 ## How to Build on Linux
 
-### Ubuntu 18 (Debian 10)
+### Ubuntu 24.04 / Debian 13
 
 ```sh
-sudo apt install -y zip g++ gcc git curl wget nasm yasm libgtk-3-dev clang libxcb-randr0-dev libxdo-dev \
-        libxfixes-dev libxcb-shape0-dev libxcb-xfixes0-dev libasound2-dev libpulse-dev cmake make \
-        libclang-dev ninja-build libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+sudo apt install -y build-essential git curl cmake pkg-config clang libclang-dev \
+        libgtk-3-dev libfontconfig1-dev libdav1d-dev libvpx-dev libyuv-dev libopus-dev libaom-dev \
+        libavcodec-dev libavformat-dev libavutil-dev libva-dev libvdpau-dev \
+        libxcb-randr0-dev libxdo-dev libxfixes-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+        libasound2-dev libpulse-dev libssl-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 ```
+
+Debian/Ubuntu's libyuv package has no `libyuv.pc`; the build links `libyuv.so` using
+its standard header and library paths. Debian packaging also needs `dpkg-dev` to
+measure the binary's shared-library dependencies rather than guess versioned FFmpeg package names.
 
 ### openSUSE Tumbleweed
 
-```sh
-sudo zypper install gcc-c++ git curl wget nasm yasm gcc gtk3-devel clang libxcb-devel libXfixes-devel cmake alsa-lib-devel gstreamer-devel gstreamer-plugins-base-devel xdotool-devel
-```
+Install the matching development packages for GTK3, Fontconfig, dav1d >= 1.3,
+libvpx, libyuv, Opus, AOM, FFmpeg, PulseAudio, ALSA, GStreamer, XCB, Xfixes and libxdo,
+plus a Rust toolchain, C++ compiler, Clang/libclang and pkg-config. FFmpeg hardware
+codec availability depends on the distribution's multimedia repository and GPU driver.
 
-### Fedora 28 (CentOS 8)
+### Fedora
 
-```sh
-sudo yum -y install gcc-c++ git curl wget nasm yasm gcc gtk3-devel clang libxcb-devel libxdo-devel libXfixes-devel pulseaudio-libs-devel cmake alsa-lib-devel gstreamer1-devel gstreamer1-plugins-base-devel
-```
+Install the same media and platform development libraries using DNF. Use the
+multimedia repository appropriate for your FFmpeg hardware codec support.
 
 ### Arch (Manjaro)
 
 ```sh
-sudo pacman -Syu --needed unzip git cmake gcc curl wget yasm nasm zip make pkg-config clang gtk3 xdotool libxcb libxfixes alsa-lib pipewire
-```
-
-### Install vcpkg
-
-```sh
-git clone https://github.com/microsoft/vcpkg
-cd vcpkg
-git checkout 2023.04.15
-cd ..
-vcpkg/bootstrap-vcpkg.sh
-export VCPKG_ROOT=$HOME/vcpkg
-vcpkg/vcpkg install libvpx libyuv opus aom
-```
-
-### Fix libvpx (For Fedora)
-
-```sh
-cd vcpkg/buildtrees/libvpx/src
-cd *
-./configure
-sed -i 's/CFLAGS+=-I/CFLAGS+=-fPIC -I/g' Makefile
-sed -i 's/CXXFLAGS+=-I/CXXFLAGS+=-fPIC -I/g' Makefile
-make
-cp libvpx.a $HOME/vcpkg/installed/x64-linux/lib/
-cd
+sudo pacman -Syu --needed base-devel git cmake curl pkgconf clang gtk3 fontconfig dav1d \
+        libvpx libyuv opus aom ffmpeg xdotool libxcb libxfixes alsa-lib libpulse \
+        gst-plugins-base-libs pipewire
 ```
 
 ### Build
@@ -130,10 +120,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 git clone --recurse-submodules https://github.com/rustdesk/rustdesk
 cd rustdesk
-mkdir -p target/debug
-wget https://raw.githubusercontent.com/c-smile/sciter-sdk/master/bin.lnx/x64/libsciter-gtk.so
-mv libsciter-gtk.so target/debug
-VCPKG_ROOT=$HOME/vcpkg cargo run
+cargo run --locked
 ```
 
 ## How to build with Docker
@@ -174,12 +161,11 @@ Please ensure that you run these commands from the root of the RustDesk reposito
 - **[libs/scrap](https://github.com/rustdesk/rustdesk/tree/master/libs/scrap)**: screen capture
 - **[libs/enigo](https://github.com/rustdesk/rustdesk/tree/master/libs/enigo)**: platform specific keyboard/mouse control
 - **[libs/clipboard](https://github.com/rustdesk/rustdesk/tree/master/libs/clipboard)**: file copy and paste implementation for Windows, Linux, macOS.
-- **[src/ui](https://github.com/rustdesk/rustdesk/tree/master/src/ui)**: obsolete Sciter UI (deprecated)
+- **[src/dioxus_ui/](src/dioxus_ui/)**: native desktop and Android interface
 - **[src/server](https://github.com/rustdesk/rustdesk/tree/master/src/server)**: audio/clipboard/input/video services, and network connections
 - **[src/client.rs](https://github.com/rustdesk/rustdesk/tree/master/src/client.rs)**: start a peer connection
 - **[src/rendezvous_mediator.rs](https://github.com/rustdesk/rustdesk/tree/master/src/rendezvous_mediator.rs)**: Communicate with [rustdesk-server](https://github.com/rustdesk/rustdesk-server), wait for remote direct (TCP hole punching) or relayed connection
 - **[src/platform](https://github.com/rustdesk/rustdesk/tree/master/src/platform)**: platform specific code
-- **[flutter](https://github.com/rustdesk/rustdesk/tree/master/flutter)**: Flutter code for desktop and mobile
 
 ## Screenshots
 

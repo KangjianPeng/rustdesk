@@ -100,8 +100,8 @@ mod acl;
 pub(crate) mod installer_files;
 mod installer_handoff;
 mod installer_shell;
-mod verified_update;
 mod msi_registry;
+mod verified_update;
 pub(crate) use acl::current_process_user_sid_string;
 pub use acl::{
     set_path_permission, set_path_permission_for_portable_service_shmem_dir,
@@ -117,6 +117,25 @@ pub use verified_update::{
     copy_and_verify_update_file_sha256, schedule_current_verified_update_file_cleanup,
     update_to_verified, VerifiedUpdateFile,
 };
+
+pub fn handle_service_control() -> Option<std::process::ExitCode> {
+    if std::env::args_os().nth(1).as_deref() != Some(std::ffi::OsStr::new("--service-control")) {
+        return None;
+    }
+    extern "C" {
+        fn run_service_control() -> u32;
+    }
+    let error = unsafe { run_service_control() };
+    Some(if error == ERROR_SUCCESS {
+        std::process::ExitCode::SUCCESS
+    } else {
+        eprintln!(
+            "RustDesk service control failed: {}",
+            std::io::Error::from_raw_os_error(error as i32)
+        );
+        std::process::ExitCode::FAILURE
+    })
+}
 
 pub const FLUTTER_RUNNER_WIN32_WINDOW_CLASS: &'static str = "FLUTTER_RUNNER_WIN32_WINDOW"; // main window, install window
 pub const EXPLORER_EXE: &'static str = "explorer.exe";
@@ -1236,7 +1255,6 @@ pub fn get_active_user_home() -> Option<PathBuf> {
     None
 }
 
-#[cfg(not(feature = "flutter"))]
 #[inline]
 pub fn portable_service_logon_helper_paths() -> Option<(PathBuf, PathBuf)> {
     // Keep parity with history for now: derive LocalAppData from user profile path.
@@ -1247,7 +1265,7 @@ pub fn portable_service_logon_helper_paths() -> Option<(PathBuf, PathBuf)> {
         .home_dir()
         .join("AppData")
         .join("Local")
-        .join("rustdesk-sciter");
+        .join("rustdesk");
     let dst = dir.join("rustdesk.exe");
     Some((dir, dst))
 }
@@ -1815,7 +1833,11 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
     run_cmds(
         InstallCommands {
             script: cmds,
-            files: vec![mk_shortcut_file, uninstall_shortcut_file, tray_shortcut_file],
+            files: vec![
+                mk_shortcut_file,
+                uninstall_shortcut_file,
+                tray_shortcut_file,
+            ],
         },
         debug,
         "install",
@@ -3991,26 +4013,6 @@ fn native_after_install_commands(
         "{}\r\n{native_service}",
         commands.replacen(&service, "", 1)
     ))
-}
-
-#[cfg(not(feature = "flutter"))]
-pub fn handle_service_control() -> Option<std::process::ExitCode> {
-    if std::env::args_os().nth(1).as_deref() != Some(std::ffi::OsStr::new("--service-control")) {
-        return None;
-    }
-    extern "C" {
-        fn run_service_control() -> u32;
-    }
-    let error = unsafe { run_service_control() };
-    Some(if error == ERROR_SUCCESS {
-        std::process::ExitCode::SUCCESS
-    } else {
-        eprintln!(
-            "RustDesk service control failed: {}",
-            std::io::Error::from_raw_os_error(error as i32)
-        );
-        std::process::ExitCode::FAILURE
-    })
 }
 
 fn service_control_command(operation: &str, exe: &str, installed_now: bool) -> ResultType<String> {

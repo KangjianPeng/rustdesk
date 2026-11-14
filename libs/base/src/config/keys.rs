@@ -21,6 +21,9 @@ pub const OPTION_SYNC_INIT_CLIPBOARD: &str = "sync-init-clipboard";
 pub const OPTION_THEME: &str = "theme";
 pub const OPTION_REMOTE_MENUBAR_DRAG_LEFT: &str = "remote-menubar-drag-left";
 pub const OPTION_REMOTE_MENUBAR_DRAG_RIGHT: &str = "remote-menubar-drag-right";
+pub const OPTION_REMOTE_MENUBAR_EDGE: &str = "remote-menubar-edge";
+pub const OPTION_REMOTE_MENUBAR_FRACTION: &str = "remote-menubar-frac";
+pub const OPTION_ALLOW_MULTI_EDGE_TOOLBAR_DOCK: &str = "allow-multi-edge-toolbar-dock";
 pub const OPTION_HIDE_AB_TAGS_PANEL: &str = "hideAbTagsPanel";
 pub const OPTION_ENABLE_CONFIRM_CLOSING_TABS: &str = "enable-confirm-closing-tabs";
 pub const OPTION_ENABLE_OPEN_NEW_CONNECTIONS_IN_TABS: &str = "enable-open-new-connections-in-tabs";
@@ -148,13 +151,13 @@ pub const OPTION_USE_RAW_TCP_FOR_API: &str = "use-raw-tcp-for-api";
 pub const OPTION_HIDE_POWERED_BY_ME: &str = "hide-powered-by-me";
 pub const OPTION_MAIN_WINDOW_ALWAYS_ON_TOP: &str = "main-window-always-on-top";
 
-// flutter local options
+// local UI options
 pub const OPTION_FLUTTER_REMOTE_MENUBAR_STATE: &str = "remoteMenubarState";
-pub const OPTION_FLUTTER_PEER_SORTING: &str = "peer-sorting";
+pub const OPTION_UI_PEER_SORTING: &str = "peer-sorting";
 pub const OPTION_FLUTTER_PEER_TAB_INDEX: &str = "peer-tab-index";
 pub const OPTION_FLUTTER_PEER_TAB_ORDER: &str = "peer-tab-order";
 pub const OPTION_FLUTTER_PEER_TAB_VISIBLE: &str = "peer-tab-visible";
-pub const OPTION_FLUTTER_PEER_CARD_UI_TYLE: &str = "peer-card-ui-type";
+pub const OPTION_UI_PEER_CARD_TYPE: &str = "peer-card-ui-type";
 pub const OPTION_FLUTTER_CURRENT_AB_NAME: &str = "current-ab-name";
 pub const OPTION_ALLOW_REMOTE_CM_MODIFICATION: &str = "allow-remote-cm-modification";
 pub const OPTION_ALLOW_SYNC_CLIPBOARD_BETWEEN_SESSIONS: &str =
@@ -231,11 +234,11 @@ pub const KEYS_LOCAL_SETTINGS: &[&str] = &[
     OPTION_REMOTE_MENUBAR_DRAG_RIGHT,
     OPTION_HIDE_AB_TAGS_PANEL,
     OPTION_FLUTTER_REMOTE_MENUBAR_STATE,
-    OPTION_FLUTTER_PEER_SORTING,
+    OPTION_UI_PEER_SORTING,
     OPTION_FLUTTER_PEER_TAB_INDEX,
     OPTION_FLUTTER_PEER_TAB_ORDER,
     OPTION_FLUTTER_PEER_TAB_VISIBLE,
-    OPTION_FLUTTER_PEER_CARD_UI_TYLE,
+    OPTION_UI_PEER_CARD_TYPE,
     OPTION_FLUTTER_CURRENT_AB_NAME,
     OPTION_DISABLE_FLOATING_WINDOW,
     OPTION_FLOATING_WINDOW_SIZE,

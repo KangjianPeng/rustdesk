@@ -6,7 +6,7 @@ edition = "2021"
 build= "build.rs"
 description = "RustDesk Remote Desktop"
 default-run = "rustdesk"
-rust-version = "1.75"
+rust-version = "1.98"
 
 [lib]
 name = "librustdesk"
@@ -21,12 +21,11 @@ name = "service"
 path = "src/service.rs"
 
 [features]
-inline = []
 use_samplerate = ["samplerate", "libsamplerate-sys"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
-flutter = ["flutter_rust_bridge"]
-default = ["use_dasp"]
+dioxus-ui = ["dep:dioxus", "dep:registry", "dep:icons", "dep:blitz-shell", "dep:blitz-dom", "dep:blitz-traits", "dep:dioxus-asset-resolver", "dep:wgpu", "dep:webbrowser", "scrap/dav1d"]
+default = ["use_dasp", "dioxus-ui", "hwcodec"]
 hwcodec = ["scrap/hwcodec", "dep:hwcodec"]
 vram = ["scrap/vram"]
 mediacodec = ["scrap/mediacodec"]
@@ -38,13 +37,7 @@ drm = ["scrap/drm"]
 # giving up DRM capture: `--features drm` builds the capture path with no wake code compiled in.
 drm-wake = ["drm"]
 linux-pkg-config = ["magnum-opus/linux-pkg-config", "scrap/linux-pkg-config"]
-unix-file-copy-paste = [
-    "dep:x11-clipboard",
-    "dep:x11rb",
-    "dep:percent-encoding",
-    "dep:once_cell",
-    "clipboard/unix-file-copy-paste",
-]
+unix-file-copy-paste = ["clipboard/unix-file-copy-paste"]
 screencapturekit = ["cpal/screencapturekit"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -58,7 +51,6 @@ base = { path = "libs/base" }
 serde_derive = "1.0"
 serde = "1.0"
 serde_json = "1.0"
-serde_repr = "0.1"
 cfg-if = "1.0"
 lazy_static = "1.4"
 sha2 = "0.10"
@@ -75,8 +67,8 @@ uuid = { version = "1.3", features = ["v4"] }
 num_cpus = "1.15"
 bytes = { version = "1.4", features = ["serde"] }
 default-net = "0.14"
-wol-rs = "1.0"
-flutter_rust_bridge = { version = "=1.80", features = ["uuid"], optional = true}
+registry = { git = "https://github.com/rust-ui/ui.git", rev = "4f5a516e76d75a15a587ab2169352cf34fd318d0", package = "registry", optional = true }
+icons = { version = "0.19.0", features = ["dioxus"], optional = true }
 errno = "0.3"
 rdev = { git = "https://github.com/rustdesk-org/rdev" }
 url = { version = "2.3", features = ["serde"] }
@@ -86,7 +78,7 @@ chrono = "0.4"
 cidr-utils = "0.5"
 fon = "0.6"
 shutdown_hooks = "0.1"
-totp-rs = { version = "5.4", default-features = false, features = ["gen_secret", "otpauth"] }
+totp-rs = { version = "5.4", default-features = false, features = ["otpauth"] }
 stunclient = "0.4"
 kcp-sys= { git = "https://github.com/rustdesk-org/kcp-sys", branch = "rustdesk-patches" }
 reqwest = { version = "0.12", features = ["blocking", "socks", "json", "native-tls", "rustls-tls", "rustls-tls-native-roots", "gzip", "zstd"], default-features=false }
@@ -97,8 +89,6 @@ cpal = { git = "https://github.com/rustdesk-org/cpal", branch = "osx-screencaptu
 ringbuf = "0.3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-mac_address = "1.1"
-sciter-rs = { git = "https://github.com/rustdesk-org/rust-sciter", branch = "dyn" }
 sys-locale = "0.3"
 enigo = { path = "libs/enigo", features = [ "with_serde" ] }
 clipboard = { path = "libs/clipboard" }
@@ -109,7 +99,6 @@ clipboard-master = { git = "https://github.com/rustdesk-org/clipboard-master" }
 portable-pty = { git = "https://github.com/rustdesk-org/wezterm", branch = "rustdesk/pty_based_0.8.1", package = "portable-pty" }
 
 system_shutdown = "4.0"
-qrcode-generator = "4.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [
@@ -162,14 +151,20 @@ dispatch = "0.2"
 core-foundation = "0.9"
 core-graphics = "0.22"
 include_dir = "0.7"
-fruitbasket = "0.10"
-objc_id = "0.1"
 # If we use piet "0.7" here, we must also update core-graphics to "0.24".
 piet = "0.6"
 piet-coregraphics = "0.6"
 foreign-types = "0.3"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+dioxus = { version = "0.7.10", default-features = false, features = ["macro", "html", "signals", "hooks", "launch", "native", "logger"], optional = true }
+blitz-shell = { version = "0.2.3", default-features = false, features = ["data-uri"], optional = true }
+blitz-dom = { version = "0.2.4", optional = true }
+blitz-traits = { version = "0.2", optional = true }
+dioxus-asset-resolver = { version = "0.7.10", features = ["native"], optional = true }
+wgpu = { version = "26", default-features = false, features = ["wgsl"], optional = true }
+winit = "0.30"
+webbrowser = { version = "1", optional = true }
 tray-icon = { git = "https://github.com/tauri-apps/tray-icon", version = "0.21.3" }
 tao = { git = "https://github.com/rustdesk-org/tao", branch = "dev" }
 image = "0.24"
@@ -186,23 +181,19 @@ bytemuck = "1.23"
 ttf-parser = "0.25"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+scrap = { path = "libs/scrap", features = ["linux-pkg-config"] }
+magnum-opus = { git = "https://github.com/rustdesk-org/magnum-opus", features = ["linux-pkg-config"] }
 libxdo-sys = "0.11"
 psimple = { package = "libpulse-simple-binding", version = "2.27" }
 pulse = { package = "libpulse-binding", version = "2.27" }
 rust-pulsectl = { git = "https://github.com/rustdesk-org/pulsectl" }
-async-process = "1.7"
 evdev = { git="https://github.com/rustdesk-org/evdev" }
 dbus = "0.9"
 dbus-crossroads = "0.5"
-x11-clipboard = {git="https://github.com/clslaid/x11-clipboard", branch = "feat/store-batch", optional = true}
-x11rb =  {version = "0.12", features = ["all-extensions"], optional = true}
-percent-encoding = {version = "2.3", optional = true}
-once_cell = {version = "1.18", optional = true}
 nix = { version = "0.29", features = ["term", "process"]}
 gtk = "0.18"
 termios = "0.3"
 terminfo = "0.8"
-winit = "0.30"
 wayland-client = "0.31"
 xkbcommon-dl = { version = "0.4", features = ["x11"] }
 
@@ -210,6 +201,7 @@ xkbcommon-dl = { version = "0.4", features = ["x11"] }
 openssl = { version = "0.10", features = ["vendored"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
+dioxus = { version = "0.7.10", default-features = false, features = ["macro", "html", "signals", "hooks", "launch", "mobile"], optional = true }
 android_logger = "0.13"
 jni = "0.21"
 android-wakelock = { git = "https://github.com/rustdesk-org/android-wakelock" }
@@ -293,3 +285,13 @@ rpath = true
 
 [profile.dev]
 debug = 1
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"

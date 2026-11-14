@@ -5,7 +5,7 @@ Summary:    RPM package
 License:    GPL-3.0
 URL:        https://rustdesk.com
 Vendor:     rustdesk <info@rustdesk.com>
-Requires:   gtk3 libxcb libXfixes alsa-lib libva2 gstreamer1-plugins-base
+Requires:   gtk3 dav1d fontconfig vulkan-loader libxcb libXfixes alsa-lib libva2 gstreamer1-plugins-base
 Recommends: libayatana-appindicator-gtk3 libxdo
 
 # https://docs.fedoraproject.org/en-US/packaging-guidelines/Scriptlets/
@@ -28,7 +28,6 @@ mkdir -p %{buildroot}/usr/share/rustdesk/files/
 mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps/
 mkdir -p %{buildroot}/usr/share/icons/hicolor/scalable/apps/
 install -m 755 $HBB/target/release/rustdesk %{buildroot}/usr/bin/rustdesk
-install $HBB/libsciter-gtk.so %{buildroot}/usr/share/rustdesk/libsciter-gtk.so
 install $HBB/res/rustdesk.service %{buildroot}/usr/share/rustdesk/files/
 install $HBB/res/128x128@2x.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/rustdesk.png
 install $HBB/res/scalable.svg %{buildroot}/usr/share/icons/hicolor/scalable/apps/rustdesk.svg
@@ -37,7 +36,6 @@ install $HBB/res/rustdesk-link.desktop %{buildroot}/usr/share/rustdesk/files/
 
 %files
 /usr/bin/rustdesk
-/usr/share/rustdesk/libsciter-gtk.so
 /usr/share/rustdesk/files/rustdesk.service
 /usr/share/icons/hicolor/256x256/apps/rustdesk.png
 /usr/share/icons/hicolor/scalable/apps/rustdesk.svg

@@ -1,6 +1,6 @@
 use super::*;
-use hbb_common::{allow_err, anyhow};
 use base::platform::linux::DISTRO;
+use hbb_common::anyhow;
 use scrap::{
     is_cursor_embedded, set_map_err,
     wayland::pipewire::{fill_displays, try_fix_logical_size},
@@ -11,8 +11,8 @@ use std::io;
 
 use crate::{
     client::{
-        SCRAP_OTHER_VERSION_OR_X11_REQUIRED, SCRAP_UBUNTU_HIGHER_REQUIRED,
-        SCRAP_X11_REQUIRED, SCRAP_XDP_PORTAL_UNAVAILABLE,
+        SCRAP_OTHER_VERSION_OR_X11_REQUIRED, SCRAP_UBUNTU_HIGHER_REQUIRED, SCRAP_X11_REQUIRED,
+        SCRAP_XDP_PORTAL_UNAVAILABLE,
     },
     platform::linux::is_x11,
 };
@@ -320,7 +320,10 @@ pub(super) async fn update_uinput_resolution() {
         scrap::wayland::display::clear_wayland_displays_cache();
         match scrap::wayland::display::get_desktop_rect_for_uinput() {
             // The lookup above just cached the displays, so the rects come from that snapshot.
-            Some(rect) => Some((rect, scrap::wayland::display::get_display_rects_for_uinput())),
+            Some(rect) => Some((
+                rect,
+                scrap::wayland::display::get_display_rects_for_uinput(),
+            )),
             // Raw DRM union: there is no compositor layout to baseline. Empty keeps the #15601
             // remap inactive, which is right when the origins are unknown anyway.
             None => drm_desktop_rect_for_uinput().map(|rect| (rect, Vec::new())),
@@ -482,7 +485,9 @@ pub(super) async fn check_init() -> ResultType<()> {
                                 Ok(Err(err)) => {
                                     log::error!("Failed to update mouse resolution: {}", err)
                                 }
-                                Err(err) => log::error!("Failed to update mouse resolution: {}", err),
+                                Err(err) => {
+                                    log::error!("Failed to update mouse resolution: {}", err)
+                                }
                             }
                         };
                         if super::display_service::run_uinput_apply(job).await.is_err() {
@@ -823,10 +828,10 @@ pub(super) fn get_capturer_for_display(
                     // and no wayland path ever reconciles the two, so every frame would be
                     // rejected client-side. Falling into the bail instead advertises the display
                     // offline, which the client recovers from by re-enumerating.
-                    let size_matches = advertised.width as usize == rect.1
-                        && advertised.height as usize == rect.2;
-                    let transposed = advertised.width as usize == rect.2
-                        && advertised.height as usize == rect.1;
+                    let size_matches =
+                        advertised.width as usize == rect.1 && advertised.height as usize == rect.2;
+                    let transposed =
+                        advertised.width as usize == rect.2 && advertised.height as usize == rect.1;
                     // The single-display carve-out forgives a size DIFFERENCE (a Full Workspace
                     // stream may report the workspace, not the mode), but never a transposed
                     // pair: that is the same served-vs-advertised orientation split as above,
@@ -876,15 +881,4 @@ pub(super) fn get_capturer_for_display(
             display_idx
         );
     }
-}
-
-pub fn common_get_error() -> String {
-    if DISTRO.name.to_uppercase() == "Ubuntu".to_uppercase() {
-        if DISTRO.version_id < "21".to_owned() {
-            return "".to_owned();
-        }
-    } else {
-        // to-do: check other distros
-    }
-    return "".to_owned();
 }

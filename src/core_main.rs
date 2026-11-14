@@ -36,10 +36,10 @@ fn finish_macos_update(result: hbb_common::ResultType<()>) -> Option<CoreMainAct
     }
 }
 
-/// shared by flutter and sciter main function
+/// shared by the desktop application entry point
 ///
 /// [Note]
-/// If it returns [`None`], then the process will terminate, and flutter gui will not be started.
+/// If it returns [`None`], then the process will terminate.
 /// If it returns [`Some`], the action determines whether to start the UI or report failure.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn core_main() -> Option<CoreMainAction> {
@@ -53,32 +53,16 @@ pub fn core_main() -> Option<CoreMainAction> {
         return None;
     }
     let mut args = Vec::new();
-    let mut flutter_args = Vec::new();
     let mut i = 0;
     let mut _is_elevate = false;
     let mut _is_run_as_system = false;
     let mut _is_quick_support = false;
-    let mut _is_flutter_invoke_new_connection = false;
     let mut no_server = false;
     let mut arg_exe = Default::default();
     for arg in std::env::args() {
         if i == 0 {
             arg_exe = arg;
         } else if i > 0 {
-            #[cfg(feature = "flutter")]
-            if [
-                "--connect",
-                "--play",
-                "--file-transfer",
-                "--view-camera",
-                "--port-forward",
-                "--terminal",
-                "--rdp",
-            ]
-            .contains(&arg.as_str())
-            {
-                _is_flutter_invoke_new_connection = true;
-            }
             if arg == "--elevate" {
                 _is_elevate = true;
             } else if arg == "--run-as-system" {
@@ -112,8 +96,7 @@ pub fn core_main() -> Option<CoreMainAction> {
     #[cfg(not(debug_assertions))]
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     register_breakdown_handler(breakdown_callback);
-    #[cfg(target_os = "linux")]
-    #[cfg(feature = "flutter")]
+    #[cfg(all(target_os = "linux", feature = "dioxus-ui"))]
     {
         let (k, v) = ("LIBGL_ALWAYS_SOFTWARE", "1");
         if config::option2bool(
@@ -129,14 +112,9 @@ pub fn core_main() -> Option<CoreMainAction> {
     if args.contains(&"--connect".to_string()) || args.contains(&"--view-camera".to_string()) {
         base::platform::windows::start_cpu_performance_monitor();
     }
-    #[cfg(feature = "flutter")]
-    if _is_flutter_invoke_new_connection {
-        return core_main_invoke_new_connection(std::env::args()).map(CoreMainAction::StartUi);
-    }
     let click_setup = cfg!(windows) && args.is_empty() && crate::common::is_setup(&arg_exe);
     if click_setup && !config::is_disable_installation() {
         args.push("--install".to_owned());
-        flutter_args.push("--install".to_string());
     }
     if args.contains(&"--noinstall".to_string()) {
         args.clear();
@@ -146,7 +124,6 @@ pub fn core_main() -> Option<CoreMainAction> {
     // clients can continue running as portable applications.
     if config::is_disable_installation() {
         args.retain(|arg| arg != "--install");
-        flutter_args.retain(|arg| arg != "--install");
     }
     if args.len() > 0 {
         if args[0] == "--version" {
@@ -179,13 +156,10 @@ pub fn core_main() -> Option<CoreMainAction> {
             log_name = name;
         }
     }
+    #[cfg(all(debug_assertions, feature = "dioxus-ui"))]
+    crate::dioxus_ui::logging::init_debug_log(&log_name);
+    #[cfg(not(all(debug_assertions, feature = "dioxus-ui")))]
     hbb_common::init_log(false, &log_name);
-
-    // linux uni (url) go here.
-    #[cfg(all(target_os = "linux", feature = "flutter"))]
-    if args.len() > 0 && args[0].starts_with(&crate::get_uri_prefix()) {
-        return try_send_by_dbus(args[0].clone()).map(CoreMainAction::StartUi);
-    }
 
     #[cfg(windows)]
     if !crate::platform::is_installed()
@@ -447,7 +421,6 @@ pub fn core_main() -> Option<CoreMainAction> {
                 println!("Unlock PIN is disabled!");
                 return None;
             }
-            #[cfg(feature = "flutter")]
             if args.len() == 2 {
                 if crate::platform::is_installed() && is_root() {
                     if let Err(err) = crate::ipc::set_unlock_pin(args[1].to_owned(), false) {
@@ -699,7 +672,7 @@ pub fn core_main() -> Option<CoreMainAction> {
             return None;
         } else if args[0] == "--cm" {
             // call connection manager to establish connections
-            // meanwhile, return true to call flutter window to show control panel
+            // The desktop UI needs to show the connection manager.
             crate::ui_interface::start_option_status_sync();
         } else if args[0] == "--whiteboard" {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -717,9 +690,6 @@ pub fn core_main() -> Option<CoreMainAction> {
         }
     }
     //_async_logger_holder.map(|x| x.flush());
-    #[cfg(feature = "flutter")]
-    return Some(CoreMainAction::StartUi(flutter_args));
-    #[cfg(not(feature = "flutter"))]
     return Some(CoreMainAction::StartUi(args));
 }
 
@@ -745,106 +715,6 @@ fn import_config(path: &str) {
     if get_modified_time(&path2) > get_modified_time(&Config2::file()) {
         if store_path(Config2::file(), config2).is_err() {
             log::info!("config2 written");
-        }
-    }
-}
-
-/// invoke a new connection
-///
-/// [Note]
-/// this is for invoke new connection from dbus.
-/// If it returns [`None`], then the process will terminate, and flutter gui will not be started.
-/// If it returns [`Some`], then the process will continue, and flutter gui will be started.
-#[cfg(feature = "flutter")]
-fn core_main_invoke_new_connection(mut args: std::env::Args) -> Option<Vec<String>> {
-    let mut authority = None;
-    let mut id = None;
-    let mut param_array = vec![];
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--connect" | "--play" | "--file-transfer" | "--view-camera" | "--port-forward"
-            | "--terminal" | "--rdp" => {
-                authority = Some((&arg.to_string()[2..]).to_owned());
-                id = args.next();
-            }
-            "--password" => {
-                if let Some(password) = args.next() {
-                    param_array.push(format!("password={password}"));
-                }
-            }
-            "--relay" => {
-                param_array.push(format!("relay=true"));
-            }
-            // inner
-            "--switch_uuid" => {
-                if let Some(switch_uuid) = args.next() {
-                    param_array.push(format!("switch_uuid={switch_uuid}"));
-                }
-            }
-            _ => {}
-        }
-    }
-    let mut uni_links = Default::default();
-    if let Some(authority) = authority {
-        if let Some(mut id) = id {
-            let app_name = crate::get_app_name();
-            let ext = format!(".{}", app_name.to_lowercase());
-            if id.ends_with(&ext) {
-                id = id.replace(&ext, "");
-            }
-            let params = param_array.join("&");
-            let params_flag = if params.is_empty() { "" } else { "?" };
-            uni_links = format!(
-                "{}{}/{}{}{}",
-                crate::get_uri_prefix(),
-                authority,
-                id,
-                params_flag,
-                params
-            );
-        }
-    }
-    if uni_links.is_empty() {
-        return None;
-    }
-
-    #[cfg(target_os = "linux")]
-    return try_send_by_dbus(uni_links);
-
-    #[cfg(windows)]
-    {
-        use winapi::um::winuser::WM_USER;
-        let res = crate::platform::send_message_to_hnwd(
-            &crate::platform::FLUTTER_RUNNER_WIN32_WINDOW_CLASS,
-            &crate::get_app_name(),
-            (WM_USER + 2) as _, // referred from unilinks desktop pub
-            uni_links.as_str(),
-            false,
-        );
-        return if res { None } else { Some(Vec::new()) };
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return if let Err(_) = crate::ipc::send_url_scheme(uni_links) {
-            Some(Vec::new())
-        } else {
-            None
-        };
-    }
-}
-
-#[cfg(all(target_os = "linux", feature = "flutter"))]
-fn try_send_by_dbus(uni_links: String) -> Option<Vec<String>> {
-    use crate::dbus::invoke_new_connection;
-
-    match invoke_new_connection(uni_links) {
-        Ok(()) => {
-            return None;
-        }
-        Err(err) => {
-            log::error!("{}", err.as_ref());
-            // return Some to invoke this url by self
-            return Some(Vec::new());
         }
     }
 }

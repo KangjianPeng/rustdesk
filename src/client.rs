@@ -37,17 +37,21 @@ use crate::{
 };
 #[cfg(feature = "unix-file-copy-paste")]
 use crate::{clipboard::check_clipboard_files, clipboard_file::unix_file_clip};
+use base::{
+    config::keys,
+    fs::JobType,
+    message_proto::{option_message::BoolOption, *},
+};
 pub use file_trait::FileManager;
-#[cfg(not(feature = "flutter"))]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(target_os = "ios"))]
 use hbb_common::tokio::sync::mpsc::UnboundedSender;
 use hbb_common::{
     allow_err,
     anyhow::{anyhow, Context},
     bail,
     config::{
-        self, use_ws, Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution,
-        CONNECT_TIMEOUT, READ_TIMEOUT, RELAY_PORT, RENDEZVOUS_PORT, RENDEZVOUS_SERVERS,
+        self, use_ws, Config, LocalConfig, PeerConfig, PeerInfoSerde, Resolution, CONNECT_TIMEOUT,
+        READ_TIMEOUT, RELAY_PORT, RENDEZVOUS_PORT, RENDEZVOUS_SERVERS,
     },
     futures::future::{select_ok, BoxFuture, FutureExt},
     get_version_number, log,
@@ -71,11 +75,6 @@ use hbb_common::{
     websocket::{check_ws, is_ws_endpoint},
     AddrMangle, ResultType, Stream,
 };
-use base::{
-    config::keys,
-    fs::JobType,
-    message_proto::{option_message::BoolOption, *},
-};
 pub use helper::*;
 use scrap::{
     codec::Decoder,
@@ -87,8 +86,7 @@ use scrap::{
 use crate::clipboard::CLIPBOARD_INTERVAL;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::{check_clipboard, ClipboardSide};
-#[cfg(not(feature = "flutter"))]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(target_os = "ios"))]
 use crate::ui_session_interface::SessionPermissionConfig;
 
 pub use super::lang::*;
@@ -123,23 +121,16 @@ pub const LOGIN_SCREEN_WAYLAND: &str = "Wayland login screen is not supported";
 #[cfg(target_os = "linux")]
 pub const SCRAP_UBUNTU_HIGHER_REQUIRED: &str = "ubuntu-21-04-required";
 #[cfg(target_os = "linux")]
-pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str =
-    "wayland-requires-higher-linux-version";
+pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str = "wayland-requires-higher-linux-version";
 #[cfg(target_os = "linux")]
-pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str =
-    "xdp-portal-unavailable";
+pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str = "xdp-portal-unavailable";
 pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#x11-required";
 
 #[cfg(not(target_os = "linux"))]
 pub const AUDIO_BUFFER_MS: usize = 3000;
 
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(crate) struct ClientClipboardContext;
-
-#[cfg(not(feature = "flutter"))]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(target_os = "ios"))]
 pub(crate) struct ClientClipboardContext {
     pub cfg: SessionPermissionConfig,
     pub tx: UnboundedSender<Data>,
@@ -152,10 +143,6 @@ pub struct Client;
 
 #[cfg(not(target_os = "ios"))]
 struct ClipboardState {
-    #[cfg(feature = "flutter")]
-    is_text_required: bool,
-    #[cfg(all(feature = "flutter", feature = "unix-file-copy-paste"))]
-    is_file_required: bool,
     running: bool,
 }
 
@@ -991,9 +978,7 @@ impl Client {
                 if remaining.is_zero() {
                     break;
                 }
-                let timeout_ms = remaining
-                    .as_millis()
-                    .clamp(1, u64::MAX as u128) as u64;
+                let timeout_ms = remaining.as_millis().clamp(1, u64::MAX as u128) as u64;
                 let Some(msg_in) =
                     crate::get_next_nonkeyexchange_msg(&mut socket, Some(timeout_ms)).await
                 else {
@@ -1586,7 +1571,10 @@ impl Client {
                 // WebRTC won the race but identity/DTLS binding failed; fall back to a freshly
                 // coordinated relay instead of failing the whole attempt. The guard is dropped
                 // first so the bad pc is closed promptly.
-                log::warn!("WebRTC secure handshake failed ({}), falling back to relay", e);
+                log::warn!(
+                    "WebRTC secure handshake failed ({}), falling back to relay",
+                    e
+                );
                 drop(webrtc_guard.take());
                 match Self::request_relay(
                     peer_id,
@@ -1712,9 +1700,10 @@ impl Client {
                                 // requiring the peer to have SIGNED that fingerprint defeats a
                                 // rendezvous/relay MITM that swaps SDPs. Fail closed.
                                 if is_webrtc {
-                                    let actual_fp = conn.dtls_fingerprint(false).await.ok_or_else(
-                                        || anyhow!("WebRTC DTLS fingerprint unavailable"),
-                                    )?;
+                                    let actual_fp =
+                                        conn.dtls_fingerprint(false).await.ok_or_else(|| {
+                                            anyhow!("WebRTC DTLS fingerprint unavailable")
+                                        })?;
                                     if !dtls_fingerprint_bound(&signed_fp, &actual_fp) {
                                         bail!("WebRTC DTLS fingerprint not bound to peer identity (possible MITM)");
                                     }
@@ -1880,27 +1869,8 @@ impl Client {
         Ok(conn)
     }
 
-    #[inline]
-    #[cfg(feature = "flutter")]
-    #[cfg(not(target_os = "ios"))]
-    pub fn set_is_text_clipboard_required(b: bool) {
-        CLIPBOARD_STATE.lock().unwrap().is_text_required = b;
-    }
-
-    #[inline]
-    #[cfg(all(feature = "flutter", feature = "unix-file-copy-paste"))]
-    pub fn set_is_file_clipboard_required(b: bool) {
-        CLIPBOARD_STATE.lock().unwrap().is_file_required = b;
-    }
-
     #[cfg(not(target_os = "ios"))]
     fn try_stop_clipboard() {
-        // Disconnected Flutter sessions may keep UI handlers alive, so only connected sessions
-        // should block clipboard cleanup.
-        #[cfg(feature = "flutter")]
-        if crate::flutter::sessions::has_connected_sessions_running(ConnType::DEFAULT_CONN) {
-            return;
-        }
         #[cfg(not(target_os = "android"))]
         clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);
         CLIPBOARD_STATE.lock().unwrap().running = false;
@@ -1944,7 +1914,6 @@ impl Client {
         std::thread::spawn(move || {
             let mut handler = ClientClipboardHandler {
                 ctx: None,
-                #[cfg(not(feature = "flutter"))]
                 client_clip_ctx: _client_clip_ctx,
             };
 
@@ -1985,7 +1954,10 @@ impl Client {
     }
 
     #[cfg(target_os = "android")]
-    fn try_start_clipboard(_p: Option<()>) -> Option<UnboundedReceiver<()>> {
+    fn try_start_clipboard(
+        client_clip_ctx: Option<ClientClipboardContext>,
+    ) -> Option<UnboundedReceiver<()>> {
+        let client_clip_ctx = client_clip_ctx?;
         let mut clipboard_lock = CLIPBOARD_STATE.lock().unwrap();
         if clipboard_lock.running {
             return None;
@@ -1998,13 +1970,15 @@ impl Client {
                 if !CLIPBOARD_STATE.lock().unwrap().running {
                     break;
                 }
-                if !CLIPBOARD_STATE.lock().unwrap().is_text_required {
+                if !client_clip_ctx.cfg.is_text_clipboard_required() {
                     std::thread::sleep(Duration::from_millis(CLIPBOARD_INTERVAL));
                     continue;
                 }
 
                 if let Some(msg) = crate::clipboard::get_clipboards_msg(true) {
-                    crate::flutter::send_clipboard_msg(msg, false);
+                    if client_clip_ctx.tx.send(Data::Message(msg)).is_err() {
+                        break;
+                    }
                 }
 
                 std::thread::sleep(Duration::from_millis(CLIPBOARD_INTERVAL));
@@ -2020,31 +1994,19 @@ impl Client {
 #[cfg(not(target_os = "ios"))]
 impl ClipboardState {
     fn new() -> Self {
-        Self {
-            #[cfg(feature = "flutter")]
-            is_text_required: true,
-            #[cfg(all(feature = "flutter", feature = "unix-file-copy-paste"))]
-            is_file_required: true,
-            running: false,
-        }
+        Self { running: false }
     }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct ClientClipboardHandler {
     ctx: Option<crate::clipboard::ClipboardContext>,
-    #[cfg(not(feature = "flutter"))]
     client_clip_ctx: Option<ClientClipboardContext>,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl ClientClipboardHandler {
     fn is_text_required(&self) -> bool {
-        #[cfg(feature = "flutter")]
-        {
-            CLIPBOARD_STATE.lock().unwrap().is_text_required
-        }
-        #[cfg(not(feature = "flutter"))]
         {
             self.client_clip_ctx
                 .as_ref()
@@ -2055,11 +2017,6 @@ impl ClientClipboardHandler {
 
     #[cfg(feature = "unix-file-copy-paste")]
     fn is_file_required(&self) -> bool {
-        #[cfg(feature = "flutter")]
-        {
-            CLIPBOARD_STATE.lock().unwrap().is_file_required
-        }
-        #[cfg(not(feature = "flutter"))]
         {
             self.client_clip_ctx
                 .as_ref()
@@ -2072,7 +2029,9 @@ impl ClientClipboardHandler {
         if CLIPBOARD_STATE.lock().unwrap().running {
             #[cfg(feature = "unix-file-copy-paste")]
             if self.is_file_required() {
-                if let Some(urls) = check_clipboard_files(&mut self.ctx, ClipboardSide::Client, false) {
+                if let Some(urls) =
+                    check_clipboard_files(&mut self.ctx, ClipboardSide::Client, false)
+                {
                     if !urls.is_empty() {
                         #[cfg(target_os = "macos")]
                         if crate::clipboard::is_file_url_set_by_rustdesk(&urls) {
@@ -2102,13 +2061,6 @@ impl ClientClipboardHandler {
         }
     }
 
-    #[inline]
-    #[cfg(feature = "flutter")]
-    fn send_msg(&self, msg: Message, _is_file: bool) {
-        crate::flutter::send_clipboard_msg(msg, _is_file);
-    }
-
-    #[cfg(not(feature = "flutter"))]
     fn send_msg(&self, msg: Message, _is_file: bool) {
         if let Some(ctx) = &self.client_clip_ctx {
             #[cfg(feature = "unix-file-copy-paste")]
@@ -2396,7 +2348,9 @@ impl AudioHandler {
 
         self.sample_rate = (format0.sample_rate, config.sample_rate.0);
         let audio_resampler = create_audio_resampler(
-            format0.sample_rate, config.sample_rate.0, format0.channels as _,
+            format0.sample_rate,
+            config.sample_rate.0,
+            format0.channels as _,
         )?;
         let mut build_output_stream = |config: StreamConfig| match sample_format {
             cpal::SampleFormat::I8 => self.build_output_stream::<i8>(&config, &device),
@@ -2650,12 +2604,6 @@ pub struct VideoHandler {
 }
 
 impl VideoHandler {
-    #[cfg(feature = "flutter")]
-    pub fn get_adapter_luid() -> Option<i64> {
-        crate::flutter::get_adapter_luid()
-    }
-
-    #[cfg(not(feature = "flutter"))]
     pub fn get_adapter_luid() -> Option<i64> {
         None
     }
@@ -2664,12 +2612,16 @@ impl VideoHandler {
     pub fn new(format: CodecFormat, _display: usize) -> Self {
         let luid = Self::get_adapter_luid();
         log::info!("new video handler for display #{_display}, format: {format:?}, luid: {luid:?}");
-        let rgba_format =
-            if cfg!(feature = "flutter") && (cfg!(windows) || cfg!(target_os = "linux")) {
-                ImageFormat::ABGR
-            } else {
-                ImageFormat::ARGB
-            };
+        #[cfg(all(
+            feature = "dioxus-ui",
+            not(any(target_os = "android", target_os = "ios"))
+        ))]
+        let rgba_format = ImageFormat::ABGR;
+        #[cfg(not(all(
+            feature = "dioxus-ui",
+            not(any(target_os = "android", target_os = "ios"))
+        )))]
+        let rgba_format = ImageFormat::ARGB;
         VideoHandler {
             decoder: Decoder::new(format, luid),
             rgb: ImageRgb::new(rgba_format, crate::get_dst_align_rgba()),
@@ -2867,9 +2819,6 @@ pub struct LoginConfigHandler {
     pub direct: Option<bool>,
     pub received: bool,
     switch_uuid: Option<String>,
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    switch_back_allowed: bool,
     pub save_ab_password_to_recent: bool, // true: connected with ab password
     pub other_server: Option<(String, String, String)>,
     pub custom_fps: Arc<Mutex<Option<usize>>>,
@@ -2992,11 +2941,6 @@ impl LoginConfigHandler {
 
         self.direct = None;
         self.received = false;
-        #[cfg(feature = "flutter")]
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        {
-            self.switch_back_allowed = false;
-        }
         self.switch_uuid = switch_uuid;
         self.adapter_luid = adapter_luid;
         self.selected_windows_session_id = None;
@@ -3008,23 +2952,6 @@ impl LoginConfigHandler {
         let is_terminal_admin = conn_type == ConnType::TERMINAL
             && std::env::var("IS_TERMINAL_ADMIN").map_or(false, |v| v == "Y");
         self.is_terminal_admin = is_terminal_admin;
-    }
-
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn allow_switch_back_once(&mut self) {
-        self.switch_back_allowed = true;
-    }
-
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn consume_switch_back_permission(&mut self) -> bool {
-        if self.switch_back_allowed {
-            self.switch_back_allowed = false;
-            true
-        } else {
-            false
-        }
     }
 
     /// Check if the client should auto login.
@@ -3150,40 +3077,10 @@ impl LoginConfigHandler {
         self.save_config(config);
     }
 
-    /// Set a ui config of flutter for handler's [`PeerConfig`].
-    ///
-    /// # Arguments
-    ///
-    /// * `k` - key of option
-    /// * `v` - value of option
-    pub fn save_ui_flutter(&mut self, k: String, v: String) {
-        let mut config = self.load_config();
-        if v.is_empty() {
-            config.ui_flutter.remove(&k);
-        } else {
-            config.ui_flutter.insert(k, v);
-        }
-        self.save_config(config);
-    }
-
     pub fn set_direct_failure(&mut self, value: i32) {
         let mut config = self.load_config();
         config.direct_failures = value;
         self.save_config(config);
-    }
-
-    /// Get a ui config of flutter for handler's [`PeerConfig`].
-    /// Return String if the option is found, otherwise return "".
-    ///
-    /// # Arguments
-    ///
-    /// * `k` - key of option
-    pub fn get_ui_flutter(&self, k: &str) -> String {
-        if let Some(v) = self.config.ui_flutter.get(k) {
-            v.clone()
-        } else {
-            "".to_owned()
-        }
     }
 
     /// Toggle an option in the handler.
@@ -3387,15 +3284,6 @@ impl LoginConfigHandler {
                 quality
             };
             msg.custom_image_quality = quality << 8;
-            #[cfg(feature = "flutter")]
-            if let Some(custom_fps) = self.options.get("custom-fps") {
-                let mut custom_fps = custom_fps.parse().unwrap_or(30);
-                if !allow_more && custom_fps > 30 {
-                    custom_fps = 30;
-                }
-                msg.custom_fps = custom_fps;
-                *self.custom_fps.lock().unwrap() = Some(custom_fps as _);
-            }
         }
         let view_only = self.get_toggle_option("view-only");
         if view_only {
@@ -3706,23 +3594,6 @@ impl LoginConfigHandler {
                 .options
                 .insert("force-always-relay".to_owned(), "Y".to_owned());
         }
-        #[cfg(feature = "flutter")]
-        {
-            // sync connected password to personal ab automatically if it is not shared password
-            if !config.password.is_empty()
-                && !self.password_source.is_shared_ab(&password, &hash)
-                && !self.password_source.is_personal_ab(&password)
-            {
-                let hash = base64::encode(config.password.clone(), base64::Variant::Original);
-                let evt: HashMap<&str, String> = HashMap::from([
-                    ("name", "sync_peer_hash_password_to_personal_ab".to_string()),
-                    ("id", self.id.clone()),
-                    ("hash", hash),
-                ]);
-                let evt = serde_json::ser::to_string(&evt).unwrap_or("".to_owned());
-                crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, evt);
-            }
-        }
         if config.keyboard_mode.is_empty() {
             if is_keyboard_mode_supported(
                 &KeyboardMode::Map,
@@ -3782,16 +3653,15 @@ impl LoginConfigHandler {
         };
         let mut avatar = get_builtin_option(keys::OPTION_AVATAR);
         if avatar.is_empty() {
-            avatar = serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option(
-                "user_info",
-            ))
-            .ok()
-            .and_then(|x| {
-                x.get("avatar")
-                    .and_then(|x| x.as_str())
-                    .map(|x| x.trim().to_owned())
-            })
-            .unwrap_or_default();
+            avatar =
+                serde_json::from_str::<serde_json::Value>(&LocalConfig::get_option("user_info"))
+                    .ok()
+                    .and_then(|x| {
+                        x.get("avatar")
+                            .and_then(|x| x.as_str())
+                            .map(|x| x.trim().to_owned())
+                    })
+                    .unwrap_or_default();
         }
         avatar = resolve_avatar_url(avatar);
         let mut display_name = get_builtin_option(keys::OPTION_DISPLAY_NAME);
@@ -4263,7 +4133,7 @@ pub async fn handle_test_delay(t: TestDelay, peer: &mut Stream) {
 
 /// Whether is track pad scrolling.
 #[inline]
-#[cfg(all(target_os = "macos", not(feature = "flutter")))]
+#[cfg(target_os = "macos")]
 fn check_scroll_on_mac(mask: i32, x: i32, y: i32) -> bool {
     // flutter version we set mask type bit to 4 when track pad scrolling.
     if mask & 7 == crate::input::MOUSE_TYPE_TRACKPAD {
@@ -4330,7 +4200,7 @@ pub fn send_mouse(
     if command {
         mouse_event.modifiers.push(ControlKey::Meta.into());
     }
-    #[cfg(all(target_os = "macos", not(feature = "flutter")))]
+    #[cfg(target_os = "macos")]
     if check_scroll_on_mac(mask, x, y) {
         let factor = 3;
         mouse_event.mask = crate::input::MOUSE_TYPE_TRACKPAD;
@@ -4546,82 +4416,8 @@ pub fn handle_login_error(
     }
 }
 
-// "Switch sides" requires the incoming-only client to connect back to its
-// controlling peer; verify the local pending uuid before opening the connection.
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn is_switch_sides_back(conn_type: ConnType, interface: &impl Interface) -> bool {
-    if conn_type != ConnType::DEFAULT_CONN {
-        return false;
-    }
-    let (id, uuid) = {
-        let lch = interface.get_lch();
-        let lc = lch.read().unwrap();
-        let Some(uuid) = lc.switch_uuid.as_deref() else {
-            return false;
-        };
-        let Ok(uuid) = Uuid::parse_str(uuid) else {
-            return false;
-        };
-        (lc.id.clone(), uuid)
-    };
-    if !request_local_switch_sides_uuid(
-        &id,
-        &uuid,
-        crate::ipc::SwitchSidesUuidAction::Check,
-    )
-    .await
-    {
-        return false;
-    }
-    let lch = interface.get_lch();
-    let lc = lch.read().unwrap();
-    let current_uuid = lc
-        .switch_uuid
-        .as_deref()
-        .and_then(|value| Uuid::parse_str(value).ok());
-    lc.id == id && current_uuid.as_ref() == Some(&uuid)
-}
-
-#[cfg(not(all(feature = "flutter", not(any(target_os = "android", target_os = "ios")))))]
 async fn is_switch_sides_back(_conn_type: ConnType, _interface: &impl Interface) -> bool {
     false
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-async fn request_local_switch_sides_uuid(
-    id: &str,
-    uuid: &Uuid,
-    action: crate::ipc::SwitchSidesUuidAction,
-) -> bool {
-    let Ok(mut conn) = crate::ipc::connect(1000, "").await else {
-        return false;
-    };
-    let uuid = uuid.to_string();
-    if conn
-        .send(&crate::ipc::Data::SwitchSidesUuid(
-            uuid.clone(),
-            id.to_owned(),
-            action,
-            None,
-        ))
-        .await
-        .is_err()
-    {
-        return false;
-    }
-    match conn.next_timeout(1000).await {
-        Ok(Some(crate::ipc::Data::SwitchSidesUuid(
-            returned_uuid,
-            returned_id,
-            returned_action,
-            Some(true),
-        ))) => {
-            returned_uuid == uuid && returned_id == id && returned_action == action
-        }
-        _ => false,
-    }
 }
 
 /// Handle hash message sent by peer.
@@ -4644,44 +4440,6 @@ pub async fn handle_hash(
     lc.write().unwrap().hash = hash.clone();
     // Take care of password application order
 
-    // switch_uuid
-    #[cfg(feature = "flutter")]
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        let uuid = lc.write().unwrap().switch_uuid.take();
-        if let Some(uuid) = uuid {
-            if let Ok(uuid) = uuid::Uuid::from_str(&uuid) {
-                let id = lc.read().unwrap().id.clone();
-                if !request_local_switch_sides_uuid(
-                    &id,
-                    &uuid,
-                    crate::ipc::SwitchSidesUuidAction::Consume,
-                )
-                .await
-                {
-                    log::warn!("Ignored untrusted switch_uuid");
-                } else {
-                    lc.write().unwrap().allow_switch_back_once();
-                    send_switch_login_request(lc.clone(), peer, uuid).await;
-                    lc.write().unwrap().password_source = Default::default();
-                    return true;
-                }
-            }
-        }
-        // Incoming-only may connect out solely for a verified switch-back;
-        // never fall through to password login, including on repeated hashes.
-        if config::is_incoming_only() {
-            interface.msgbox("error", "Connection Error", "Incoming only mode", "");
-            let mut misc = Misc::new();
-            misc.set_close_reason(
-                "Connection not allowed in incoming-only mode".to_owned(),
-            );
-            let mut msg = Message::new();
-            msg.set_misc(misc);
-            allow_err!(peer.send(&msg).await);
-            return false;
-        }
-    }
     // last password
     let mut password = lc.read().unwrap().password.clone();
     // preset password
@@ -4966,41 +4724,24 @@ pub trait Interface: Send + Clone + 'static + Sized {
         let title = "Connection Error";
         let text = err.to_string();
         let lch = self.get_lch();
-        let (is_restarting, direct, received) = {
+        let is_restarting = {
             let lc = lch.read().unwrap();
-            (lc.is_restarting_remote_device(), lc.direct, lc.received)
+            lc.is_restarting_remote_device()
         };
         if is_restarting {
             log::info!("Restart remote device, suppress connection error: {err}");
-            // Flutter treats this as a reconnect control event. The text is kept
-            // for legacy UI and existing translation reuse.
-            self.msgbox("restarting", "Restarting remote device", "Connection in progress. Please wait.", "");
+            self.msgbox(
+                "restarting",
+                "Restarting remote device",
+                "Connection in progress. Please wait.",
+                "",
+            );
             return;
         }
 
-        let mut relay_hint = false;
-        let mut relay_hint_type = "relay-hint";
-        // force relay
         let errno = errno::errno().0;
         log::error!("Connection closed: {err}({errno})");
-        if direct == Some(true)
-            && ((cfg!(windows) && (errno == 10054 || err.contains("10054")))
-                || (!cfg!(windows) && (errno == 104 || err.contains("104")))
-                || (!err.contains("Failed") && err.contains("deadline")))
-        // deadline: https://github.com/rustdesk/rustdesk-server-pro/discussions/325, most likely comes from secure tcp timeout
-        {
-            relay_hint = true;
-            if !received {
-                relay_hint_type = "relay-hint2"
-            }
-        }
-
-        // relay-hint
-        if cfg!(feature = "flutter") && relay_hint {
-            self.msgbox(relay_hint_type, title, &text, "");
-        } else {
-            self.msgbox("error", title, &text, "");
-        }
+        self.msgbox("error", title, &text, "");
     }
 }
 
@@ -5023,7 +4764,7 @@ pub enum Data {
     CancelJob(i32),
     RemovePortForward(i32),
     AddPortForward((i32, String, i32)),
-    #[cfg(all(target_os = "windows", not(feature = "flutter")))]
+    #[cfg(target_os = "windows")]
     ToggleClipboardFile,
     NewRDP,
     SetConfirmOverrideFile((i32, i32, bool, bool, bool)),
@@ -5306,141 +5047,6 @@ async fn hc_connection_(
         }
     }
     Ok(())
-}
-
-pub mod peer_online {
-    use hbb_common::{
-        anyhow::bail,
-        config::{Config, CONNECT_TIMEOUT, READ_TIMEOUT},
-        log,
-        rendezvous_proto::*,
-        sleep,
-        socket_client::connect_tcp,
-        ResultType, Stream,
-    };
-
-    pub async fn query_online_states<F: FnOnce(Vec<String>, Vec<String>)>(ids: Vec<String>, f: F) {
-        let test = false;
-        if test {
-            sleep(1.5).await;
-            let mut onlines = ids;
-            let offlines = onlines.drain((onlines.len() / 2)..).collect();
-            f(onlines, offlines)
-        } else {
-            let query_timeout = std::time::Duration::from_millis(3_000);
-            match query_online_states_(&ids, query_timeout).await {
-                Ok((onlines, offlines)) => {
-                    f(onlines, offlines);
-                }
-                Err(e) => {
-                    log::debug!("query onlines, {}", &e);
-                }
-            }
-        }
-    }
-
-    async fn create_online_stream() -> ResultType<Stream> {
-        let (rendezvous_server, _servers, _contained) =
-            crate::get_rendezvous_server(READ_TIMEOUT).await;
-        let tmp: Vec<&str> = rendezvous_server.split(":").collect();
-        if tmp.len() != 2 {
-            bail!("Invalid server address: {}", rendezvous_server);
-        }
-        let port: u16 = tmp[1].parse()?;
-        if port == 0 {
-            bail!("Invalid server address: {}", rendezvous_server);
-        }
-        let online_server = format!("{}:{}", tmp[0], port - 1);
-        connect_tcp(online_server, CONNECT_TIMEOUT).await
-    }
-
-    async fn query_online_states_(
-        ids: &Vec<String>,
-        timeout: std::time::Duration,
-    ) -> ResultType<(Vec<String>, Vec<String>)> {
-        let mut msg_out = RendezvousMessage::new();
-        msg_out.set_online_request(OnlineRequest {
-            id: Config::get_id(),
-            peers: ids.clone(),
-            ..Default::default()
-        });
-
-        let mut socket = match create_online_stream().await {
-            Ok(s) => s,
-            Err(e) => {
-                log::debug!("Failed to create peers online stream, {e}");
-                return Ok((vec![], ids.clone()));
-            }
-        };
-        // TODO: Use long connections to avoid socket creation
-        // If we use a Arc<Mutex<Option<FramedStream>>> to hold and reuse the previous socket,
-        // we may face the following error:
-        // An established connection was aborted by the software in your host machine. (os error 10053)
-        if let Err(e) = socket.send(&msg_out).await {
-            log::debug!("Failed to send peers online states query, {e}");
-            return Ok((vec![], ids.clone()));
-        }
-        // Retry for 2 times to get the online response
-        for _ in 0..2 {
-            if let Some(msg_in) =
-                crate::get_next_nonkeyexchange_msg(&mut socket, Some(timeout.as_millis() as _))
-                    .await
-            {
-                match msg_in.union {
-                    Some(rendezvous_message::Union::OnlineResponse(online_response)) => {
-                        let states = online_response.states;
-                        // One bit per ID, rounded up to whole bytes:
-                        // 0 IDs -> 0 bytes; 1..=8 -> 1; 9..=16 -> 2; 17..=24 -> 3.
-                        let required_len = ids.len().div_ceil(u8::BITS as usize);
-                        if states.len() < required_len {
-                            bail!(
-                                "Invalid online response: expected at least {required_len} state bytes, got {}",
-                                states.len()
-                            );
-                        }
-                        let mut onlines = Vec::new();
-                        let mut offlines = Vec::new();
-                        for i in 0..ids.len() {
-                            // bytes index from left to right
-                            let bit_value = 0x01 << (7 - i % 8);
-                            if (states[i / 8] & bit_value) == bit_value {
-                                onlines.push(ids[i].clone());
-                            } else {
-                                offlines.push(ids[i].clone());
-                            }
-                        }
-                        return Ok((onlines, offlines));
-                    }
-                    _ => {
-                        // ignore
-                    }
-                }
-            } else {
-                // TODO: Make sure socket closed?
-                bail!("Online stream receives None");
-            }
-        }
-
-        bail!("Failed to query online states, no online response");
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use crate::client::Client;
-        use hbb_common::rendezvous_proto::IceCandidate;
-
-        #[test]
-        fn accepts_webrtc_ice_by_session_key_only() {
-            let ice = IceCandidate {
-                session_key: "session-a".to_owned(),
-                candidate: "candidate-json".to_owned(),
-                ..Default::default()
-            };
-
-            assert!(Client::is_expected_webrtc_ice_candidate(&ice, "session-a"));
-            assert!(!Client::is_expected_webrtc_ice_candidate(&ice, "session-b"));
-        }
-    }
 }
 
 async fn test_udp_uat(

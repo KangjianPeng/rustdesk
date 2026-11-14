@@ -11,6 +11,7 @@ use std::{
 
 use uuid::Uuid;
 
+use base::config::keys::*;
 use hbb_common::{
     allow_err,
     anyhow::{self, bail},
@@ -30,7 +31,6 @@ use hbb_common::{
     webrtc::WebRTCStream,
     AddrMangle, IntoTargetAddr, ResultType, Stream, TargetAddr,
 };
-use base::config::keys::*;
 
 use crate::{
     check_port,
@@ -210,8 +210,6 @@ static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 static MANUAL_RESTARTED: AtomicBool = AtomicBool::new(false);
 static SENT_REGISTER_PK: AtomicBool = AtomicBool::new(false);
 pub(crate) static NEEDS_DEPLOY: AtomicBool = AtomicBool::new(false);
-#[cfg(target_os = "android")]
-static NOTIFIED_NEEDS_DEPLOY: AtomicBool = AtomicBool::new(false);
 // register_pk retry interval (ms) when device is awaiting deployment
 const DEPLOY_RETRY_INTERVAL: i64 = 30_000;
 lazy_static::lazy_static! {
@@ -238,22 +236,15 @@ async fn deploy_register_throttled() -> bool {
 
 #[cfg(target_os = "android")]
 fn notify_android_needs_deploy() {
-    if NOTIFIED_NEEDS_DEPLOY.load(Ordering::SeqCst) {
-        return;
-    }
-    let event = serde_json::json!({ "name": "android_needs_deploy" }).to_string();
-    if matches!(
-        crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, event),
-        Some(true)
-    ) {
-        NOTIFIED_NEEDS_DEPLOY.store(true, Ordering::SeqCst);
-    }
+    #[cfg(feature = "dioxus-ui")]
+    crate::dioxus_ui::connection_manager::set_needs_deploy(true);
 }
 
 #[cfg(target_os = "android")]
 pub(crate) fn reset_needs_deploy_notification() {
     NEEDS_DEPLOY.store(false, Ordering::SeqCst);
-    NOTIFIED_NEEDS_DEPLOY.store(false, Ordering::SeqCst);
+    #[cfg(feature = "dioxus-ui")]
+    crate::dioxus_ui::connection_manager::set_needs_deploy(false);
 }
 
 #[derive(Clone)]
@@ -903,7 +894,9 @@ impl RendezvousMediator {
         let stream_for_remote_ice = stream.clone();
         tokio::spawn(async move {
             while let Some(candidate) = remote_ice_rx.recv().await {
-                if let Err(err) = stream_for_remote_ice.add_remote_ice_candidate(&candidate).await
+                if let Err(err) = stream_for_remote_ice
+                    .add_remote_ice_candidate(&candidate)
+                    .await
                 {
                     if let Some(n) = REJECTED_REMOTE_ICE_LOG.due() {
                         log::warn!(

@@ -3,10 +3,6 @@ use serde_json::{json, Value};
 const DIAGNOSTICS_KEY: &str = "hwcodec-diagnostics";
 const BENCHMARK_KEY: &str = "hwcodec-benchmark";
 
-pub fn is_diagnostics_key(key: &str) -> bool {
-    matches!(key, DIAGNOSTICS_KEY | BENCHMARK_KEY)
-}
-
 pub fn get(key: &str) -> String {
     match key {
         DIAGNOSTICS_KEY => diagnostics_json(),
@@ -50,7 +46,10 @@ fn backend_name(name: &str, hwdevice: hwcodec::ffmpeg::AVHWDeviceType) -> &'stat
         || hwdevice == hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI
     {
         "VA-API"
-    } else if lower.contains("nvenc") || lower.contains("cuda") {
+    } else if lower.contains("nvenc")
+        || lower.contains("cuda")
+        || hwdevice == hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA
+    {
         "NVIDIA NVENC/NVDEC"
     } else if lower.contains("qsv")
         || hwdevice == hwcodec::ffmpeg::AVHWDeviceType::AV_HWDEVICE_TYPE_QSV
@@ -94,12 +93,18 @@ pub fn detect() {
 
     use scrap::hwcodec::HwCodecConfig;
 
+    if !HwCodecConfig::already_set() {
+        if let Err(error) = crate::ipc::get_hwcodec_config_from_server() {
+            hbb_common::log::trace!("Cannot load codec backends from the service: {error:#}");
+        }
+    }
     static DETECT_ONCE: Once = Once::new();
     if HwCodecConfig::get().ram_encode.is_empty() && HwCodecConfig::get().ram_decode.is_empty() {
         DETECT_ONCE.call_once(|| {
             let detected = scrap::hwcodec::check_available_hwcodec();
-            if serde_json::from_str::<HwCodecConfig>(&detected).is_ok() {
-                HwCodecConfig::set(detected);
+            match serde_json::from_str::<HwCodecConfig>(&detected) {
+                Ok(_) => HwCodecConfig::set(detected),
+                Err(error) => hbb_common::log::error!("Invalid codec detection result: {error}"),
             }
         });
     }
@@ -146,7 +151,11 @@ fn diagnostics_json() -> String {
             is_hardware_encoder(&info.name),
         ));
     }
-    for info in &config.ram_decode {
+    for info in config
+        .ram_decode
+        .iter()
+        .filter(|info| is_hardware_decoder(info))
+    {
         backends.push(backend_entry(info, "decode", is_hardware_decoder(info)));
     }
     for info in [software.h264.as_ref(), software.h265.as_ref()]
@@ -189,7 +198,7 @@ fn diagnostics_json() -> String {
 
     json!({
         "enabled": enable_hwcodec_option(),
-        "detected": !config.ram_encode.is_empty() || !config.ram_decode.is_empty(),
+        "detected": backends.iter().any(|backend| backend["hardware"] == true),
         "backends": backends,
         "active": active,
         "software_codecs": ["VP8", "VP9", "AV1"],
@@ -370,6 +379,10 @@ mod tests {
         assert_eq!(
             backend_name("libx265", AVHWDeviceType::AV_HWDEVICE_TYPE_NONE),
             "FFmpeg software"
+        );
+        assert_eq!(
+            backend_name("h264", AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA),
+            "NVIDIA NVENC/NVDEC"
         );
     }
 

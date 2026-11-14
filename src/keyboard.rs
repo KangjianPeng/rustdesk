@@ -1,16 +1,12 @@
-#[cfg(feature = "flutter")]
-use crate::flutter;
+#[cfg(feature = "dioxus-ui")]
+use crate::dioxus_ui;
 #[cfg(target_os = "windows")]
 use crate::platform::windows::{get_char_from_vk, get_unicode_from_vk};
-#[cfg(not(feature = "flutter"))]
-use crate::ui::CUR_SESSION;
-use crate::ui_session_interface::{InvokeUiSession, Session};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::{client::get_key_state, common::GrabState};
+use base::message_proto::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::log;
-use base::message_proto::*;
-use hbb_common::SessionID;
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use rdev::KeyCode;
 use rdev::{Event, EventType, Key};
@@ -36,34 +32,6 @@ const OS_LOWER_ANDROID: &str = "android";
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 static KEYBOARD_HOOKED: AtomicBool = AtomicBool::new(false);
 
-// Track key down state for relative mouse mode exit shortcut.
-// macOS: Cmd+G (track G key)
-// Windows/Linux: Ctrl+Alt (track whichever modifier was pressed last)
-// This prevents the exit from retriggering on OS key-repeat.
-#[cfg(all(feature = "flutter", any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-static EXIT_SHORTCUT_KEY_DOWN: AtomicBool = AtomicBool::new(false);
-
-// Track whether relative mouse mode is currently active.
-// This is set by Flutter via set_relative_mouse_mode_state() and checked
-// by the rdev grab loop to determine if exit shortcuts should be processed.
-#[cfg(all(feature = "flutter", any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-static RELATIVE_MOUSE_MODE_ACTIVE: AtomicBool = AtomicBool::new(false);
-
-/// Set the relative mouse mode state from Flutter.
-/// This is called when entering or exiting relative mouse mode.
-#[cfg(all(feature = "flutter", any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-pub fn set_relative_mouse_mode_state(active: bool) {
-    RELATIVE_MOUSE_MODE_ACTIVE.store(active, Ordering::SeqCst);
-    // Reset exit shortcut state when mode changes to avoid stale state
-    if !active {
-        EXIT_SHORTCUT_KEY_DOWN.store(false, Ordering::SeqCst);
-    }
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-static IS_RDEV_ENABLED: AtomicBool = AtomicBool::new(false);
-
 lazy_static::lazy_static! {
     static ref TO_RELEASE: Arc<Mutex<HashMap<Key, Event>>> = Arc::new(Mutex::new(HashMap::new()));
     static ref MODIFIERS_STATE: Mutex<HashMap<Key, bool>> = {
@@ -79,8 +47,6 @@ lazy_static::lazy_static! {
         Mutex::new(m)
     };
 }
-
-pub mod shortcuts;
 
 pub mod client {
     use super::*;
@@ -159,10 +125,6 @@ pub mod client {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn change_grab_status(state: GrabState, keyboard_mode: &str, session_id: u128) {
-        #[cfg(feature = "flutter")]
-        if !IS_RDEV_ENABLED.load(Ordering::SeqCst) {
-            return;
-        }
         // Serialize transitions so a stale `Wait` from a previous owner cannot
         // clobber a fresh `Run` from a different session window.
         let mut release_after_unlock = None;
@@ -322,38 +284,6 @@ pub mod client {
     }
 
     pub fn process_event(keyboard_mode: &str, event: &Event, lock_modes: Option<i32>) {
-        // Shortcut intercept — must come before any wire encoding.
-        // A press that fires a shortcut is consumed, and so are its auto repeats
-        // and its release; every other event passes through to the
-        // encode/forward path.
-        //
-        // NOTE: Shortcut matching intentionally happens BEFORE any key swapping
-        // (swap_modifier_key) so that shortcuts bind to the physical keys pressed,
-        // not the swapped keys. This makes shortcut setup intuitive: users bind
-        // shortcuts to the actual keys they press, regardless of swap settings.
-        // Key swapping only affects what gets sent to the remote.
-        //
-        // Gated on `feature = "flutter"` because the dispatch target
-        // (`flutter::push_session_event`) is Flutter-only. Sciter builds never
-        // call `reload_from_config`, so the cache stays disabled and the
-        // matcher would no-op anyway — but we still skip the call entirely so
-        // a hand-edited config can't silently swallow keys on a UI that has
-        // no way to surface the action.
-        //
-        // `None` for session_id makes the helper resolve through
-        // `flutter::get_cur_session_id()` — the rdev grab loop is process-wide
-        // and has no per-event session context to thread.
-        #[cfg(feature = "flutter")]
-        if crate::keyboard::shortcuts::try_dispatch(
-            None,
-            event,
-            keyboard_mode,
-            || get_peer_platform().to_lowercase(),
-            send_key_event,
-        ) {
-            return;
-        }
-
         let keyboard_mode = get_keyboard_mode_enum(keyboard_mode);
         if is_long_press(&event) {
             return;
@@ -361,41 +291,6 @@ pub mod client {
         let peer = get_peer_platform().to_lowercase();
         for key_event in event_to_key_events(peer, &event, keyboard_mode, lock_modes) {
             send_key_event(&key_event);
-        }
-    }
-
-    pub fn process_event_with_session<T: InvokeUiSession>(
-        keyboard_mode: &str,
-        event: &Event,
-        lock_modes: Option<i32>,
-        session: &Session<T>,
-        session_id: SessionID,
-    ) {
-        // Shortcut intercept — see the long comment in `process_event` above
-        // for the consume / feature-gate rationale. The only difference
-        // here is that the Flutter FFI path threads an explicit SessionID
-        // through, so dispatch targets the exact tab the keystroke originated
-        // from — no dependency on the global focus tracker.
-        #[cfg(feature = "flutter")]
-        if crate::keyboard::shortcuts::try_dispatch(
-            Some(&session_id),
-            event,
-            keyboard_mode,
-            || session.peer_platform().to_lowercase(),
-            |key_event| session.send_key_event(key_event),
-        ) {
-            return;
-        }
-        #[cfg(not(feature = "flutter"))]
-        let _ = session_id;
-
-        let keyboard_mode = get_keyboard_mode_enum(keyboard_mode);
-        if is_long_press(&event) {
-            return;
-        }
-        let peer = session.peer_platform().to_lowercase();
-        for key_event in event_to_key_events(peer, &event, keyboard_mode, lock_modes) {
-            session.send_key_event(&key_event);
         }
     }
 
@@ -523,144 +418,11 @@ static mut IS_LEFT_OPTION_DOWN: bool = false;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn get_keyboard_mode() -> String {
-    #[cfg(not(feature = "flutter"))]
-    if let Some(session) = CUR_SESSION.lock().unwrap().as_ref() {
-        return session.get_keyboard_mode();
-    }
-    #[cfg(feature = "flutter")]
-    if let Some(session) = flutter::get_cur_session() {
+    #[cfg(feature = "dioxus-ui")]
+    if let Some(session) = dioxus_ui::current_session() {
         return session.get_keyboard_mode();
     }
     "legacy".to_string()
-}
-
-/// Check if exit shortcut for relative mouse mode is active.
-/// Exit shortcuts (only exits, not toggles):
-/// - macOS: Cmd+G
-/// - Windows/Linux: Ctrl+Alt (triggered when both are pressed)
-/// Note: This shortcut is only available in Flutter client. Sciter client does not support relative mouse mode.
-#[cfg(feature = "flutter")]
-#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
-fn is_exit_relative_mouse_shortcut(key: Key) -> bool {
-    let modifiers = MODIFIERS_STATE.lock().unwrap();
-
-    #[cfg(target_os = "macos")]
-    {
-        // macOS: Cmd+G to exit
-        if key != Key::KeyG {
-            return false;
-        }
-        let meta = *modifiers.get(&Key::MetaLeft).unwrap_or(&false)
-            || *modifiers.get(&Key::MetaRight).unwrap_or(&false);
-        return meta;
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        // Windows/Linux: Ctrl+Alt to exit
-        // Triggered when Ctrl is pressed while Alt is down, or Alt is pressed while Ctrl is down
-        let is_ctrl_key = key == Key::ControlLeft || key == Key::ControlRight;
-        let is_alt_key = key == Key::Alt || key == Key::AltGr;
-
-        if !is_ctrl_key && !is_alt_key {
-            return false;
-        }
-
-        let ctrl = *modifiers.get(&Key::ControlLeft).unwrap_or(&false)
-            || *modifiers.get(&Key::ControlRight).unwrap_or(&false);
-        let alt = *modifiers.get(&Key::Alt).unwrap_or(&false)
-            || *modifiers.get(&Key::AltGr).unwrap_or(&false);
-
-        // When Ctrl is pressed and Alt is already down, or vice versa
-        (is_ctrl_key && alt) || (is_alt_key && ctrl)
-    }
-}
-
-/// Notify Flutter to exit relative mouse mode.
-/// Note: This is Flutter-only. Sciter client does not support relative mouse mode.
-#[cfg(feature = "flutter")]
-#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
-fn notify_exit_relative_mouse_mode() {
-    let session_id = flutter::get_cur_session_id();
-    flutter::push_session_event(&session_id, "exit_relative_mouse_mode", vec![]);
-}
-
-/// Handle relative mouse mode shortcuts in the rdev grab loop.
-/// Returns true if the event should be blocked from being sent to the peer.
-#[cfg(feature = "flutter")]
-#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
-#[inline]
-fn can_exit_relative_mouse_mode_from_grab_loop() -> bool {
-    // Only process exit shortcuts when relative mouse mode is actually active.
-    // This prevents blocking Ctrl+Alt (or Cmd+G) when not in relative mouse mode.
-    if !RELATIVE_MOUSE_MODE_ACTIVE.load(Ordering::SeqCst) {
-        return false;
-    }
-
-    let Some(session) = flutter::get_cur_session() else {
-        return false;
-    };
-
-    // Only for remote desktop sessions.
-    if !session.is_default() {
-        return false;
-    }
-
-    // Must have keyboard permission and not be in view-only mode.
-    if !*session.server_keyboard_enabled.read().unwrap() {
-        return false;
-    }
-    let lc = session.lc.read().unwrap();
-    if lc.view_only.v {
-        return false;
-    }
-
-    // Peer must support relative mouse mode.
-    crate::common::is_support_relative_mouse_mode_num(lc.version)
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
-#[inline]
-fn should_block_relative_mouse_shortcut(key: Key, is_press: bool) -> bool {
-    if !KEYBOARD_HOOKED.load(Ordering::SeqCst) {
-        return false;
-    }
-
-    // Determine which key to track for key-up blocking based on platform
-    #[cfg(target_os = "macos")]
-    let is_tracked_key = key == Key::KeyG;
-    #[cfg(not(target_os = "macos"))]
-    let is_tracked_key = key == Key::ControlLeft
-        || key == Key::ControlRight
-        || key == Key::Alt
-        || key == Key::AltGr;
-
-    // Block key up if key down was blocked (to avoid orphan key up event on remote).
-    // This must be checked before clearing the flag below.
-    if is_tracked_key && !is_press && EXIT_SHORTCUT_KEY_DOWN.swap(false, Ordering::SeqCst) {
-        return true;
-    }
-
-    // Exit relative mouse mode shortcuts:
-    // - macOS: Cmd+G
-    // - Windows/Linux: Ctrl+Alt
-    // Guard it to supported/eligible sessions to avoid blocking the chord unexpectedly.
-    if is_exit_relative_mouse_shortcut(key) {
-        if !can_exit_relative_mouse_mode_from_grab_loop() {
-            return false;
-        }
-        if is_press {
-            // Only trigger exit on transition from "not pressed" to "pressed".
-            // This prevents retriggering on OS key-repeat.
-            if !EXIT_SHORTCUT_KEY_DOWN.swap(true, Ordering::SeqCst) {
-                notify_exit_relative_mouse_mode();
-            }
-        }
-        return true;
-    }
-
-    false
 }
 
 fn start_grab_loop() {
@@ -675,11 +437,6 @@ fn start_grab_loop() {
 
             let _scan_code = event.position_code;
             let _code = event.platform_code as KeyCode;
-
-            #[cfg(feature = "flutter")]
-            if should_block_relative_mouse_shortcut(key, is_press) {
-                return None;
-            }
 
             let res = if KEYBOARD_HOOKED.load(Ordering::SeqCst) {
                 client::process_event(&get_keyboard_mode(), &event, None);
@@ -744,10 +501,6 @@ fn start_grab_loop() {
             if let Key::Unknown(keycode) = key {
                 log::error!("rdev get unknown key, keycode is {:?}", keycode);
             } else {
-                #[cfg(feature = "flutter")]
-                if should_block_relative_mouse_shortcut(key, is_press) {
-                    return None;
-                }
                 client::process_event(&get_keyboard_mode(), &event, None);
             }
             None
@@ -790,10 +543,6 @@ fn take_remote_keys() -> HashMap<Key, Event> {
 
 fn release_remote_keys_for_events(keyboard_mode: &str, to_release: HashMap<Key, Event>) {
     for (key, mut event) in to_release.into_iter() {
-        #[cfg(feature = "flutter")]
-        if get_peer_platform() == "Windows" && shortcuts::release_modifier_on_leave(key) {
-            continue;
-        }
         event.event_type = EventType::KeyRelease(key);
         client::process_event(keyboard_mode, &event, None);
         // If Alt or AltGr is pressed, we need to send another key stoke to release it.
@@ -1049,24 +798,15 @@ pub fn event_to_key_events(
 }
 
 pub fn send_key_event(key_event: &KeyEvent) {
-    #[cfg(not(feature = "flutter"))]
-    if let Some(session) = CUR_SESSION.lock().unwrap().as_ref() {
-        session.send_key_event(key_event);
-    }
-
-    #[cfg(feature = "flutter")]
-    if let Some(session) = flutter::get_cur_session() {
+    #[cfg(feature = "dioxus-ui")]
+    if let Some(session) = dioxus_ui::current_session() {
         session.send_key_event(key_event);
     }
 }
 
 pub fn get_peer_platform() -> String {
-    #[cfg(not(feature = "flutter"))]
-    if let Some(session) = CUR_SESSION.lock().unwrap().as_ref() {
-        return session.peer_platform();
-    }
-    #[cfg(feature = "flutter")]
-    if let Some(session) = flutter::get_cur_session() {
+    #[cfg(feature = "dioxus-ui")]
+    if let Some(session) = dioxus_ui::current_session() {
         return session.peer_platform();
     }
     "Windows".to_string()
@@ -1595,105 +1335,4 @@ pub fn keycode_to_rdev_key(keycode: u32) -> Key {
     return rdev::android_key_from_code(keycode);
     #[cfg(target_os = "macos")]
     return rdev::macos_key_from_code(keycode.try_into().unwrap_or_default());
-}
-
-#[cfg(feature = "flutter")]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub mod input_source {
-    #[cfg(target_os = "macos")]
-    use hbb_common::log;
-    use hbb_common::SessionID;
-
-    use crate::ui_interface::{get_local_option, set_local_option};
-
-    pub const CONFIG_OPTION_INPUT_SOURCE: &str = "input-source";
-    // rdev grab mode
-    pub const CONFIG_INPUT_SOURCE_1: &str = "Input source 1";
-    pub const CONFIG_INPUT_SOURCE_1_TIP: &str = "input_source_1_tip";
-    // flutter grab mode
-    pub const CONFIG_INPUT_SOURCE_2: &str = "Input source 2";
-    pub const CONFIG_INPUT_SOURCE_2_TIP: &str = "input_source_2_tip";
-
-    pub const CONFIG_INPUT_SOURCE_DEFAULT: &str = CONFIG_INPUT_SOURCE_1;
-
-    pub fn init_input_source() {
-        #[cfg(target_os = "linux")]
-        if !crate::platform::linux::is_x11() {
-            // If switching from X11 to Wayland, the grab loop will not be started.
-            // Do not change the config here.
-            return;
-        }
-        #[cfg(target_os = "macos")]
-        if !crate::platform::macos::is_can_input_monitoring(false) {
-            log::error!("init_input_source, is_can_input_monitoring() false");
-            set_local_option(
-                CONFIG_OPTION_INPUT_SOURCE.to_string(),
-                CONFIG_INPUT_SOURCE_2.to_string(),
-            );
-            return;
-        }
-        let cur_input_source = get_cur_session_input_source();
-        if cur_input_source == CONFIG_INPUT_SOURCE_1 {
-            super::IS_RDEV_ENABLED.store(true, super::Ordering::SeqCst);
-        }
-        super::client::start_grab_loop();
-    }
-
-    pub fn change_input_source(session_id: SessionID, input_source: String) {
-        let cur_input_source = get_cur_session_input_source();
-        if cur_input_source == input_source {
-            return;
-        }
-        if input_source == CONFIG_INPUT_SOURCE_1 {
-            #[cfg(target_os = "macos")]
-            if !crate::platform::macos::is_can_input_monitoring(false) {
-                log::error!("change_input_source, is_can_input_monitoring() false");
-                return;
-            }
-            // It is ok to start grab loop multiple times.
-            super::client::start_grab_loop();
-            super::IS_RDEV_ENABLED.store(true, super::Ordering::SeqCst);
-            crate::flutter_ffi::session_enter_or_leave(session_id, true);
-        } else if input_source == CONFIG_INPUT_SOURCE_2 {
-            // No need to stop grab loop.
-            crate::flutter_ffi::session_enter_or_leave(session_id, false);
-            super::IS_RDEV_ENABLED.store(false, super::Ordering::SeqCst);
-        }
-        set_local_option(CONFIG_OPTION_INPUT_SOURCE.to_string(), input_source);
-    }
-
-    #[inline]
-    pub fn get_cur_session_input_source() -> String {
-        #[cfg(target_os = "linux")]
-        if !crate::platform::linux::is_x11() {
-            return CONFIG_INPUT_SOURCE_2.to_string();
-        }
-        let input_source = get_local_option(CONFIG_OPTION_INPUT_SOURCE.to_string());
-        if input_source.is_empty() {
-            CONFIG_INPUT_SOURCE_DEFAULT.to_string()
-        } else {
-            input_source
-        }
-    }
-
-    #[inline]
-    pub fn get_supported_input_source() -> Vec<(String, String)> {
-        #[cfg(target_os = "linux")]
-        if !crate::platform::linux::is_x11() {
-            return vec![(
-                CONFIG_INPUT_SOURCE_2.to_string(),
-                CONFIG_INPUT_SOURCE_2_TIP.to_string(),
-            )];
-        }
-        vec![
-            (
-                CONFIG_INPUT_SOURCE_1.to_string(),
-                CONFIG_INPUT_SOURCE_1_TIP.to_string(),
-            ),
-            (
-                CONFIG_INPUT_SOURCE_2.to_string(),
-                CONFIG_INPUT_SOURCE_2_TIP.to_string(),
-            ),
-        ]
-    }
 }

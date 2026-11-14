@@ -1,10 +1,10 @@
 use crate::client::translate;
 #[cfg(windows)]
 use crate::ipc::Data;
+use base::config::keys;
 #[cfg(windows)]
 use hbb_common::tokio;
 use hbb_common::{allow_err, log};
-use base::config::keys;
 use std::sync::{Arc, Mutex};
 #[cfg(windows)]
 use std::time::Duration;
@@ -64,13 +64,16 @@ fn make_tray() -> hbb_common::ResultType<()> {
     let mut event_loop = EventLoopBuilder::new().build();
 
     let tray_menu = Menu::new();
-    let hide_stop_service = crate::ui_interface::get_builtin_option(
-        keys::OPTION_HIDE_STOP_SERVICE,
-    ) == "Y";
+    let hide_stop_service =
+        crate::ui_interface::get_builtin_option(keys::OPTION_HIDE_STOP_SERVICE) == "Y";
     // The tray icon is only shown when the service is running, so we don't need to check
     // the `stop-service` option here.
     let quit_i = if !hide_stop_service {
-        Some(MenuItem::new(translate("Stop service".to_owned()), true, None))
+        Some(MenuItem::new(
+            translate("Stop service".to_owned()),
+            true,
+            None,
+        ))
     } else {
         None
     };
@@ -104,29 +107,7 @@ fn make_tray() -> hbb_common::ResultType<()> {
     let (ipc_sender, ipc_receiver) = std::sync::mpsc::channel::<Data>();
 
     let open_func = move || {
-        if cfg!(not(feature = "flutter")) {
-            crate::run_me::<&str>(vec![]).ok();
-            return;
-        }
-        #[cfg(target_os = "macos")]
-        crate::platform::macos::handle_application_should_open_untitled_file();
-        #[cfg(target_os = "windows")]
-        {
-            // Do not use "start uni link" way, it may not work on some Windows, and pop out error
-            // dialog, I found on one user's desktop, but no idea why, Windows is shit.
-            // Use `run_me` instead.
-            // `allow_multiple_instances` in `flutter/windows/runner/main.cpp` allows only one instance without args.
-            crate::run_me::<&str>(vec![]).ok();
-        }
-        #[cfg(target_os = "linux")]
-        {
-            // Do not use "xdg-open", it won't read the config.
-            if crate::dbus::invoke_new_connection(crate::get_uri_prefix()).is_err() {
-                if let Ok(task) = crate::run_me::<&str>(vec![]) {
-                    crate::server::CHILD_PROCESS.lock().unwrap().push(task);
-                }
-            }
-        }
+        crate::run_me::<&str>(vec![]).ok();
     };
 
     #[cfg(windows)]
