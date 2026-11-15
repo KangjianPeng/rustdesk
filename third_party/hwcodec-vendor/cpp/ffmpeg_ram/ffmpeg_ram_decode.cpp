@@ -123,6 +123,9 @@ public:
         return -1;
       }
       c_->hw_device_ctx = av_buffer_ref(hw_device_ctx_);
+#ifdef __linux__
+      c_->get_format = get_hw_format;
+#endif
       if (!check_support()) {
         LOG_ERROR(std::string("check_support failed"));
         return -1;
@@ -173,6 +176,30 @@ public:
   }
 
 private:
+#ifdef __linux__
+  static AVPixelFormat get_hw_format(AVCodecContext *ctx,
+                                    const AVPixelFormat *formats) {
+    if (!ctx->hw_device_ctx)
+      return AV_PIX_FMT_NONE;
+    auto *device = (AVHWDeviceContext *)ctx->hw_device_ctx->data;
+    for (int i = 0;; i++) {
+      const AVCodecHWConfig *config = avcodec_get_hw_config(ctx->codec, i);
+      if (!config)
+        break;
+      if (!(config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) ||
+          config->device_type != device->type)
+        continue;
+      for (const AVPixelFormat *format = formats; *format != AV_PIX_FMT_NONE;
+           format++) {
+        if (*format == config->pix_fmt)
+          return *format;
+      }
+    }
+    // Let the caller select another decoder instead of receiving software frames.
+    return AV_PIX_FMT_NONE;
+  }
+#endif
+
   int do_decode(const void *obj) {
     int ret;
     AVFrame *tmp_frame = NULL;

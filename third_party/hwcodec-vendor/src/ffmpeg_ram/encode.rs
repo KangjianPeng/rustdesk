@@ -168,6 +168,9 @@ impl Encoder {
     pub fn available_encoders(ctx: EncodeContext, _sdk: Option<String>) -> Vec<CodecInfo> {
         use log::debug;
 
+        #[cfg(target_os = "linux")]
+        let _probe_log = crate::ffmpeg::ProbeLogGuard::enter();
+
         if !(cfg!(windows) || cfg!(target_os = "linux") || cfg!(target_os = "macos")) {
             return vec![];
         }
@@ -288,6 +291,9 @@ impl Encoder {
         // qsv doesn't support yuv420p
         codecs.retain(|c| {
             let ctx = ctx.clone();
+            if c.name == "libx265" && ctx.pixfmt != AVPixelFormat::AV_PIX_FMT_YUV420P {
+                return false;
+            }
             if ctx.pixfmt == AVPixelFormat::AV_PIX_FMT_YUV420P && c.name.contains("qsv") {
                 return false;
             }

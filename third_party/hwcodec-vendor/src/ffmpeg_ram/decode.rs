@@ -160,6 +160,9 @@ impl Decoder {
     pub fn available_decoders() -> Vec<CodecInfo> {
         use log::debug;
 
+        #[cfg(target_os = "linux")]
+        let _probe_log = crate::ffmpeg::ProbeLogGuard::enter();
+
         #[allow(unused_mut)]
         let mut codecs: Vec<CodecInfo> = vec![];
         // windows disable nvdec to avoid gpu stuck

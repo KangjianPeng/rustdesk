@@ -23,12 +23,46 @@ pub enum AVHWDeviceType {
     AV_HWDEVICE_TYPE_VULKAN,
 }
 
+#[cfg(target_os = "linux")]
+std::thread_local! {
+    static PROBING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) struct ProbeLogGuard(bool);
+
+#[cfg(target_os = "linux")]
+impl ProbeLogGuard {
+    pub(crate) fn enter() -> Self {
+        Self(PROBING.with(|probing| probing.replace(true)))
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for ProbeLogGuard {
+    fn drop(&mut self) {
+        PROBING.with(|probing| probing.set(self.0));
+    }
+}
+
+pub(crate) fn is_probing() -> bool {
+    #[cfg(target_os = "linux")]
+    return PROBING.with(|probing| probing.get());
+    #[cfg(not(target_os = "linux"))]
+    false
+}
+
 #[no_mangle]
 pub extern "C" fn hwcodec_av_log_callback(level: i32, message: *const std::os::raw::c_char) {
     let could_not_find_ref_with_poc = "Could not find ref with POC";
     unsafe {
         let c_str = std::ffi::CStr::from_ptr(message);
         if let Ok(str_slice) = c_str.to_str() {
+            // Unsupported candidates are expected during capability discovery.
+            if is_probing() {
+                log::trace!("{}", str_slice.trim_end());
+                return;
+            }
             let string = String::from(str_slice);
             if level == AV_LOG_ERROR as i32 {
                 log::error!("{}", string);
