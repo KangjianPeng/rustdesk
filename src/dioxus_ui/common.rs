@@ -81,9 +81,9 @@ pub(super) fn read_service_status() -> ServiceStatusUi {
 #[component]
 pub(super) fn ServiceStatus(status: ServiceStatusUi) -> Element {
     rsx! {
-        div { class: "flex min-h-[42px] items-center gap-2 border-t border-[#34363a] px-3 py-[9px] text-xs text-[#a9abb0]",
+        div { class: "box-border flex h-[43px] shrink-0 items-center gap-[14px] border-0 border-t border-solid border-[#34363a] px-[14px] text-sm text-[#a9abb0]", role: "status",
             span { class: if status.tone == "ready" { "h-2 w-2 shrink-0 rounded-full bg-[#32bea6]" } else if status.tone == "connecting" { "h-2 w-2 shrink-0 rounded-full bg-[#e1ad4c]" } else { "h-2 w-2 shrink-0 rounded-full bg-[#df4f5f]" } }
-            span { class: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap", "{status.label}" }
+            span { class: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap", {tr(&status.label)} }
         }
     }
 }
@@ -118,7 +118,7 @@ pub(super) fn HelpCard(data: HelpCardData) -> Element {
         dismissible,
     } = data;
     rsx! {
-        div { class: "relative mx-[11px] mt-2 rounded-[5px] border border-[#48494e] bg-rd-surface p-3 text-[11px] text-[#d0d1d3] [&_h3]:mb-1.5 [&_h3]:mr-5 [&_h3]:text-xs [&_h3]:font-medium [&_h3]:text-[#e3e3e3] [&_p]:mb-2 [&_p]:text-[#aaaeb5]",
+        div { class: "box-border relative mt-5 w-full shrink-0 bg-[linear-gradient(to_right,#e242bc,#f4727c)] p-5 text-sm text-white [&_h3]:m-0 [&_h3]:border-0 [&_h3]:p-0 [&_h3]:text-center [&_h3]:text-sm [&_h3]:font-bold [&_p]:my-2 [&_p]:leading-normal",
             if !title.is_empty() {
                 h3 { "{title}" }
             }

@@ -6,6 +6,7 @@ pub(crate) fn Home() -> Element {
     let startup_args = use_context::<Vec<String>>();
     let remote_window = super::super::runtime::is_remote_window(&startup_args);
     let active_page = use_signal(|| "home".to_owned());
+    let settings_tab = use_signal(|| None::<String>);
     let peer_id = use_signal(|| {
         if startup_args.len() > 1 && startup_args[0].starts_with("--") {
             format_remote_id(&startup_args[1])
@@ -32,7 +33,7 @@ pub(crate) fn Home() -> Element {
     let peer_sort =
         use_signal(|| normalize_peer_sort(&local_ui_option(OPTION_UI_PEER_SORTING)).to_owned());
     let peer_refresh = use_signal(|| 0_u64);
-    let peer_cards = use_signal(|| load_peer_cards("recent"));
+    let peer_cards = use_signal(Vec::new);
     let session = use_signal(|| None::<Session<DioxusHandler>>);
     let ui_state = use_signal_sync(DioxusUiState::default);
     let codec_state = use_signal_sync(|| CodecUiState {
@@ -76,9 +77,9 @@ pub(crate) fn Home() -> Element {
         help_card_dismissed,
     });
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     use_effect(move || {
-        crate::dioxus_ui::native::window().set_visible(true);
+        dioxus::desktop::window().set_visible(true);
     });
     let initial_password = startup_args
         .iter()
@@ -117,7 +118,10 @@ pub(crate) fn Home() -> Element {
 
     use_future(move || async move {
         loop {
-            service_status.set(read_service_status());
+            let status = read_service_status();
+            if *service_status.peek() != status {
+                service_status.set(status);
+            }
             hbb_common::tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
@@ -129,10 +133,17 @@ pub(crate) fn Home() -> Element {
         let mut peer_cards = peer_cards;
         let load_peer_tab = selected_peer_tab.clone();
         spawn(async move {
-            let loaded =
-                hbb_common::tokio::task::spawn_blocking(move || load_peer_cards(&load_peer_tab))
-                    .await
-                    .unwrap_or_default();
+            let loaded = match hbb_common::tokio::task::spawn_blocking(move || {
+                load_peer_cards(&load_peer_tab)
+            })
+            .await
+            {
+                Ok(loaded) => loaded,
+                Err(error) => {
+                    log::error!("Failed to load peers for {selected_peer_tab}: {error}");
+                    return;
+                }
+            };
             if current_peer_tab() == selected_peer_tab {
                 peer_cards.set(loaded);
             }
@@ -182,15 +193,19 @@ pub(crate) fn Home() -> Element {
     let rustdesk_icon = rustdesk_icon_data_uri();
 
     return rsx! {
-        UiStyles {}
         div { class: if remote_window { "flex h-screen w-full flex-col overflow-hidden bg-[#090a0b]" } else { "flex h-screen min-h-[480px] w-full flex-col overflow-hidden bg-rd-window max-[841px]:h-[100dvh] max-[841px]:min-h-[100dvh]" },
             if remote_window && cfg!(not(any(target_os = "android", target_os = "ios"))) {
                 {desktop_remote_window()}
             } else {
-                AppChrome { active_page, logo: rustdesk_icon }
-                if active_page().starts_with("settings:") {
-                    super::settings_page::SettingsPage {}
-                } else {
+                AppChrome { active_page, logo: rustdesk_icon, settings_tab }
+                if active_page().starts_with("settings:") || settings_tab().is_some() {
+                    div { class: if active_page().starts_with("settings:") { "flex min-h-0 flex-1" } else { "hidden" },
+                        super::settings_page::SettingsPage {
+                            page: if active_page().starts_with("settings:") { active_page() } else { settings_tab().unwrap_or_else(|| "settings:general".to_owned()) },
+                        }
+                    }
+                }
+                div { class: if active_page().starts_with("settings:") { "hidden" } else { "flex min-h-0 flex-1" },
                     HomePage {}
                 }
             }
@@ -203,11 +218,4 @@ fn desktop_remote_window() -> Element {
     return rsx! { super::remote_window::RemoteWindow {} };
     #[cfg(any(target_os = "android", target_os = "ios"))]
     rsx! {}
-}
-
-#[component]
-fn UiStyles() -> Element {
-    rsx! {
-        document::Stylesheet { href: asset!("/assets/tailwind.css") }
-    }
 }

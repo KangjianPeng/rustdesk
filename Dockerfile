@@ -17,7 +17,7 @@ RUN apt update -y && \
         pkg-config \
         libclang-dev \
         cmake \
-        libfontconfig1-dev \
+        libwebkit2gtk-4.1-dev \
         libavcodec-dev \
         libavformat-dev \
         libavutil-dev \

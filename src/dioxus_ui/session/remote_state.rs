@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 #[derive(Clone, Default, PartialEq)]
 pub(in crate::dioxus_ui) struct RemoteUiState {
+    pub resolutions: Vec<Resolution>,
     pub permissions: HashMap<String, bool>,
     pub chat: Arc<Vec<ChatMessage>>,
     pub recording: bool,
@@ -26,6 +27,58 @@ pub(in crate::dioxus_ui) struct ChatMessage {
 mod tests {
     use super::super::DioxusHandler;
     use super::*;
+
+    #[test]
+    fn resolution_choices_follow_the_peer_and_current_monitor() {
+        fn fixture() -> Element {
+            let state = use_signal_sync(DioxusUiState::default);
+            let handler = DioxusHandler::new(state);
+            let resolution = |width, height| Resolution {
+                width,
+                height,
+                ..Default::default()
+            };
+            handler.set_peer_info(&PeerInfo {
+                displays: vec![
+                    DisplayInfo::default(),
+                    DisplayInfo {
+                        scale: 1.5,
+                        ..Default::default()
+                    },
+                ],
+                resolutions: Some(SupportedResolutions {
+                    resolutions: vec![resolution(1920, 1080), resolution(1280, 720)],
+                    ..Default::default()
+                })
+                .into(),
+                ..Default::default()
+            });
+            assert_eq!(handler.snapshot().unwrap().remote.resolutions.len(), 2);
+            handler.switch_display(&SwitchDisplay {
+                display: 1,
+                width: 2560,
+                height: 1440,
+                original_resolution: Some(resolution(1920, 1080)).into(),
+                resolutions: Some(SupportedResolutions {
+                    resolutions: vec![resolution(2560, 1440)],
+                    ..Default::default()
+                })
+                .into(),
+                ..Default::default()
+            });
+            let snapshot = handler.snapshot().unwrap();
+            assert_eq!(snapshot.remote.resolutions, vec![resolution(2560, 1440)]);
+            assert_eq!(snapshot.displays[1].original_resolution.width, 1920);
+            assert_eq!(snapshot.displays[1].scale, 1.5);
+            handler.switch_display(&SwitchDisplay {
+                display: 0,
+                ..Default::default()
+            });
+            assert!(handler.snapshot().unwrap().remote.resolutions.is_empty());
+            rsx! { div {} }
+        }
+        VirtualDom::new(fixture).rebuild_in_place();
+    }
 
     #[test]
     fn session_events_preserve_chat_and_partial_quality_updates() {

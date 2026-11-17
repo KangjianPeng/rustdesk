@@ -31,18 +31,18 @@ impl Edge {
     }
     pub fn anchor_class(self) -> &'static str {
         match self {
-            Self::Top => "top-0 left-[var(--dock-position)] [transform:translateX(var(--dock-shift))] flex-col",
-            Self::Bottom => "bottom-0 left-[var(--dock-position)] [transform:translateX(var(--dock-shift))] flex-col-reverse",
-            Self::Left => "left-0 top-[var(--dock-position)] [transform:translateY(var(--dock-shift))] flex-row",
-            Self::Right => "right-0 top-[var(--dock-position)] [transform:translateY(var(--dock-shift))] flex-row-reverse",
+            Self::Top => "grid-cols-[minmax(0,var(--dock-before))_minmax(0,max-content)_minmax(0,var(--dock-after))] grid-rows-[auto_minmax(0,1fr)]",
+            Self::Bottom => "grid-cols-[minmax(0,var(--dock-before))_minmax(0,max-content)_minmax(0,var(--dock-after))] grid-rows-[minmax(0,1fr)_auto]",
+            Self::Left => "grid-rows-[minmax(0,var(--dock-before))_minmax(0,max-content)_minmax(0,var(--dock-after))] grid-cols-[auto_minmax(0,1fr)]",
+            Self::Right => "grid-rows-[minmax(0,var(--dock-before))_minmax(0,max-content)_minmax(0,var(--dock-after))] grid-cols-[minmax(0,1fr)_auto]",
         }
     }
     pub fn menu_class(self) -> &'static str {
         match self {
-            Self::Top => "top-full left-[var(--dock-position)] [transform:translateX(var(--dock-shift))] mt-1",
-            Self::Bottom => "bottom-full left-[var(--dock-position)] [transform:translateX(var(--dock-shift))] mb-1",
-            Self::Left => "top-[var(--dock-position)] [transform:translateY(var(--dock-shift))] left-full ml-1",
-            Self::Right => "top-[var(--dock-position)] [transform:translateY(var(--dock-shift))] right-full mr-1",
+            Self::Top => "top-full mt-1",
+            Self::Bottom => "bottom-full mb-1",
+            Self::Left => "top-0 left-full ml-1",
+            Self::Right => "top-0 right-full mr-1",
         }
     }
 }
@@ -144,20 +144,34 @@ pub(in crate::dioxus_ui) fn drag_position(
     }
 }
 
-#[component]
-pub(in crate::dioxus_ui) fn DockingSetting() -> Element {
-    let mut enabled = use_signal(local_multi_edge);
-    rsx! {
-        label { class: "flex w-full max-w-[650px] items-center justify-between gap-5 border-b border-[#35373a] py-[15px] text-sm text-[#e3e3e3]",
-            span { "Allow toolbar docking to all edges" }
-            input { class: "size-[18px] shrink-0 accent-rd-accent", r#type: "checkbox", checked: enabled(),
-                onchange: move |event| {
-                    enabled.set(event.checked());
-                    crate::ui_interface::set_local_option(OPTION_ALLOW_MULTI_EDGE_TOOLBAR_DOCK.to_owned(), if event.checked() { "Y" } else { "N" }.to_owned());
+#[derive(serde::Deserialize)]
+struct DragEvent {
+    cursor: (f64, f64),
+    parent: (f64, f64),
+    size: (f64, f64),
+    grab: f64,
+    finished: bool,
+}
+
+pub(super) fn install_drag(mut dock: SyncSignal<ToolbarDock>) {
+    let mut eval = document::eval(include_str!("toolbar_drag.js"));
+    spawn(async move {
+        while let Ok(event) = eval.recv::<DragEvent>().await {
+            let mut next = drag_position(event.cursor, event.parent, event.size, event.grab,
+                local_multi_edge(), fraction_bounds(Edge::Top));
+            next.dragging = !event.finished;
+            dock.set(next);
+            if event.finished {
+                if let Some(session) = crate::dioxus_ui::current_session() {
+                    session.set_option(OPTION_REMOTE_MENUBAR_EDGE.to_owned(), next.edge.name().to_owned());
+                    session.set_option(OPTION_REMOTE_MENUBAR_FRACTION.to_owned(), next.fraction.to_string());
+                    if !local_multi_edge() {
+                        session.set_option("remote-menubar-drag-x".to_owned(), next.fraction.to_string());
+                    }
                 }
             }
         }
-    }
+    });
 }
 
 #[cfg(test)]

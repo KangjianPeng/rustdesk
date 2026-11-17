@@ -50,32 +50,6 @@ pub(super) fn UiIcon(icon: UiIconName) -> Element {
     }
 }
 
-pub(super) fn scoped_class(class: Option<String>, default_display: &str) -> String {
-    let has_display = class.as_deref().is_some_and(|class| {
-        class.split_whitespace().any(|class| {
-            matches!(
-                class,
-                "block"
-                    | "inline"
-                    | "inline-block"
-                    | "flex"
-                    | "inline-flex"
-                    | "grid"
-                    | "inline-grid"
-            )
-        })
-    });
-    let base = if has_display {
-        "min-w-0 max-w-full align-middle".to_owned()
-    } else {
-        format!("{default_display} min-w-0 max-w-full align-middle")
-    };
-    match class {
-        Some(class) if !class.is_empty() => format!("{base} {class}"),
-        _ => base,
-    }
-}
-
 pub(super) fn copy_text_to_clipboard(text: String) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -176,33 +150,27 @@ pub(super) fn Button(
     #[props(into, optional)] title: Option<String>,
     children: Element,
 ) -> Element {
-    let class = format!(
-        "{} [&>button]:appearance-none [&>button]:rounded-none [&>button]:border-0 [&>button]:bg-transparent [&>button]:shadow-none [&>button]:outline-none [&>button]:ring-0 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-rd-accent has-[:focus-visible]:outline-offset-2",
-        scoped_class(css_class, "inline-flex")
-    );
     rsx! {
-        div { class,
-            onclick: move |event| {
+        RustUiButton {
+            class: css_class,
+            onclick: move |event: dioxus::prelude::MouseEvent| {
                 if !disabled {
                     if let Some(handler) = onclick { handler.call(event); }
                 }
             },
-            RustUiButton {
-                class: "h-auto w-full min-w-0 flex-1 self-stretch rounded-[inherit] border-0 bg-transparent p-0 text-inherit shadow-none [font:inherit] has-[>svg]:px-0 hover:bg-transparent hover:text-inherit dark:hover:bg-transparent",
-                id,
-                variant,
-                size,
-                disabled,
-                href,
-                button_type,
-                onpointerdown,
-                onpointerup,
-                onpointerleave,
-                onpointercancel,
-                aria_label,
-                title,
-                {children}
-            }
+            id,
+            variant,
+            size,
+            disabled,
+            href,
+            button_type,
+            onpointerdown,
+            onpointerup,
+            onpointerleave,
+            onpointercancel,
+            aria_label: aria_label.map(|text| tr(&text)),
+            title: title.map(|text| tr(&text)),
+            {children}
         }
     }
 }
@@ -212,11 +180,8 @@ pub(super) fn Card(
     #[props(into, optional)] css_class: Option<String>,
     children: Element,
 ) -> Element {
-    let class = scoped_class(css_class, "block");
     rsx! {
-        div { class,
-            RustUiCard { class: "w-full gap-0 rounded-none border-0 bg-transparent p-0 text-inherit shadow-none", {children} }
-        }
+        RustUiCard { class: css_class, {children} }
     }
 }
 
@@ -233,20 +198,18 @@ pub(super) fn Input(
     #[props(optional)] required: bool,
     #[props(optional)] oninput: Option<EventHandler<dioxus::prelude::FormEvent>>,
 ) -> Element {
-    let class = scoped_class(css_class, "block");
     rsx! {
-        div { class,
-            RustUiInput {
-                r#type,
-                placeholder,
-                name,
-                id,
-                value,
-                disabled,
-                readonly,
-                required,
-                oninput,
-            }
+        RustUiInput {
+            class: css_class,
+            r#type,
+            placeholder: placeholder.map(|text| tr(&text)),
+            name,
+            id,
+            value,
+            disabled,
+            readonly,
+            required,
+            oninput,
         }
     }
 }
@@ -260,17 +223,14 @@ pub(super) fn Checkbox(
     #[props(default, optional)] on_change: Option<EventHandler<bool>>,
     #[props(default = "Checkbox".to_owned(), into)] aria_label: String,
 ) -> Element {
-    let class = scoped_class(css_class, "block");
     rsx! {
-        div { class,
-            RustUiCheckbox {
-                class: "relative inline-grid place-items-center leading-none align-middle",
-                checked,
-                disabled,
-                on_checked_change,
-                on_change,
-                aria_label,
-            }
+        RustUiCheckbox {
+            class: css_class,
+            checked,
+            disabled,
+            on_checked_change,
+            on_change,
+            aria_label: tr(&aria_label),
         }
     }
 }
@@ -292,11 +252,8 @@ pub(super) fn SelectTrigger(
     #[props(into, optional)] css_class: Option<String>,
     children: Element,
 ) -> Element {
-    let class = scoped_class(css_class, "block");
     rsx! {
-        div { class,
-            RustUiSelectTrigger { {children} }
-        }
+        RustUiSelectTrigger { class: css_class, {children} }
     }
 }
 
@@ -305,10 +262,7 @@ pub(super) fn SelectContent(
     #[props(into, optional)] css_class: Option<String>,
     children: Element,
 ) -> Element {
-    let class = scoped_class(css_class, "block");
     rsx! {
-        div { class,
-            RustUiSelectContent { {children} }
-        }
+        RustUiSelectContent { class: format!("w-full min-w-[200px] [&_[data-name=SelectGroup]]:flex [&_[data-name=SelectGroup]]:flex-col [&_[data-name=SelectOption]]:whitespace-nowrap {}", css_class.unwrap_or_default()), {children} }
     }
 }

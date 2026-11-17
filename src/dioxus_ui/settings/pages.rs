@@ -1,5 +1,8 @@
 use super::super::prelude::*;
-use super::{CodecDiagnostics, SettingChoice, SettingToggle};
+use super::{
+    fields::{DefaultImageQuality, SettingsCard, SettingsScope},
+    CodecDiagnostics, SettingChoice, SettingToggle,
+};
 
 #[component]
 pub(crate) fn SettingsContent(
@@ -9,118 +12,184 @@ pub(crate) fn SettingsContent(
     hardware_codec: Signal<bool>,
 ) -> Element {
     let version = env!("CARGO_PKG_VERSION");
-    let title = match page.as_str() {
-        "settings:security" => "Security",
-        "settings:network" => "Network",
-        "settings:codec" => "Codec",
-        "settings:display" => "Display",
-        "settings:account" => "Account",
-        "settings:printer" => "Printer",
-        "settings:about" => "About",
-        _ => "General",
-    };
-    let subtitle = match page.as_str() {
-        "settings:security" => "Control passwords, permissions, and trusted devices.",
-        "settings:network" => "Configure the RustDesk ID, relay, and transport options.",
-        "settings:codec" => "Inspect detected codec backends and active encode/decode paths.",
-        "settings:display" => "Choose the default remote display and image behavior.",
-        "settings:account" => "Manage the account used by this RustDesk client.",
-        "settings:printer" => "Configure remote printer integration.",
-        "settings:about" => "RustDesk desktop client information.",
-        _ => "General RustDesk desktop settings.",
-    };
     let (h264_supported, h265_supported) = super::supported_hwdecodings();
-    let setting = |label: &'static str,
-                   description: &'static str,
-                   key: &'static str,
-                   default_on| {
-        rsx! { SettingToggle { label: label.to_owned(), description: description.to_owned(), option_key: key, default_on } }
-    };
-
     rsx! {
-        div { class: "max-w-[650px] border-b border-[#3b3d41] pb-[19px] [&_h2]:mb-[7px] [&_h2]:text-xl [&_h2]:font-normal [&_h2]:text-rd-accent [&_p]:text-xs [&_p]:text-rd-muted", h2 { "{title}" } p { "{subtitle}" } }
         match page.as_str() {
             "settings:security" => rsx! {
-                SettingChoice { label: "Password verification".to_owned(), description: "Choose whether incoming connections use a temporary or permanent password.".to_owned(), option_key: OPTION_VERIFICATION_METHOD, values: vec![("use-temporary-password".to_owned(), "Use temporary password".to_owned()), ("use-permanent-password".to_owned(), "Use permanent password".to_owned())], default_value: "use-temporary-password".to_owned() }
-                {setting("Enable trusted devices", "Remember trusted devices after successful authentication.", OPTION_ENABLE_TRUSTED_DEVICES, true)}
-                {setting("Enable LAN discovery", "Allow this device to be discovered by other RustDesk clients on the local network.", OPTION_ENABLE_LAN_DISCOVERY, true)}
+                PermissionsSettings {}
+                PasswordSettings {}
+                SettingsCard { title: "Security",
+                    SettingToggle { label: "Enable trusted devices", option_key: OPTION_ENABLE_TRUSTED_DEVICES, default_on: true }
+                    SettingToggle { label: "Deny LAN discovery", option_key: OPTION_ENABLE_LAN_DISCOVERY, default_on: true, reverse: true }
+                    SettingToggle { label: "Keep awake during incoming sessions", option_key: OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS, default_on: true }
+                }
             },
             "settings:network" => rsx! {
-                {setting("Use WebSocket", "Use WebSocket transport when the network requires it.", OPTION_ALLOW_WEBSOCKET, false)}
-                {setting("Allow insecure TLS fallback", "Allow a fallback when the configured TLS connection cannot be established.", OPTION_ALLOW_INSECURE_TLS_FALLBACK, false)}
-                {setting("Disable UDP", "Disable UDP hole punching and UDP transport.", OPTION_DISABLE_UDP, false)}
-                {setting("Adaptive bitrate", "Adjust bitrate to the current network conditions.", OPTION_ENABLE_ABR, true)}
+                SettingsCard { title: "Network",
+                    SettingToggle { label: "Use WebSocket", option_key: OPTION_ALLOW_WEBSOCKET, default_on: false }
+                    SettingToggle { label: "Allow insecure TLS fallback", option_key: OPTION_ALLOW_INSECURE_TLS_FALLBACK, default_on: false }
+                    SettingToggle { label: "Disable UDP", option_key: OPTION_DISABLE_UDP, default_on: false }
+                }
             },
             "settings:codec" => rsx! {
-                div { class: "grid w-full max-w-[650px] grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b border-[#35373a] py-[15px] max-[560px]:items-start max-[560px]:gap-3 [&_h3]:mb-[5px] [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-[#e3e3e3] [&_p]:text-xs [&_p]:text-rd-muted max-[560px]:[&_h3]:[overflow-wrap:anywhere] max-[560px]:[&_p]:[overflow-wrap:anywhere]",
-                    div { class: "min-w-0", h3 { "Enable hardware codec" } p {
-                        if has_hardware_codec { "Hardware codec support is available in this build." }
-                        else { "This build does not include hardware codec support." }
-                    } }
-                    Checkbox { css_class: "h-[18px] w-[18px] shrink-0 [&>[data-name=Checkbox]]:relative [&>[data-name=Checkbox]]:grid [&>[data-name=Checkbox]]:size-[18px] [&>[data-name=Checkbox]]:place-items-center [&>[data-name=Checkbox]]:rounded-[3px] [&>[data-name=Checkbox]]:border [&>[data-name=Checkbox]]:border-[#777b83] [&>[data-name=Checkbox]]:bg-rd-panel [&>[data-name=Checkbox]]:text-white [&>[data-name=Checkbox]]:leading-none [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:absolute [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:inset-0 [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:m-0 [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:grid [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:place-items-center [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]>svg]:block [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]>svg]:size-[14px] [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]>svg]:shrink-0 [&>[data-state=checked]]:border-rd-accent [&>[data-state=checked]]:bg-rd-accent", checked: hardware_codec(), disabled: !has_hardware_codec, aria_label: "Enable hardware codec", on_checked_change: move |enabled| {
-                        hardware_codec.set(enabled);
-                        let value = if enabled { "Y" } else { "N" }.to_owned();
-                        spawn(async move {
-                            if let Err(error) = crate::ui_interface::set_option_async(OPTION_ENABLE_HWCODEC.to_owned(), value).await {
-                                log::error!("Failed to update hardware codec setting: {error:#}");
-                            }
-                            let diagnostics = super::super::settings::codec_json("hwcodec-diagnostics").await;
-                            update_signal(codec_state, |state| state.diagnostics = Arc::from(diagnostics));
-                        });
-                    } }
-                }
+                SettingsCard { title: "Codec diagnostics",
+                    div { class: "px-[15px] pb-2",
                 div { class: "mt-5 flex flex-wrap gap-[9px]",
-                    Button { css_class: "min-h-7 whitespace-nowrap rounded-lg border border-[#55575b] bg-[#303135] px-[14px] text-[13px] text-[#d0d1d3] hover:bg-[#3a3b3f]", variant: ButtonVariant::Outline, disabled: codec_state.read().loading, onclick: move |_| {
+                    Button { variant: ButtonVariant::Outline, disabled: codec_state.read().loading, onclick: move |_| {
                         update_signal(codec_state, |state| state.loading = true);
                         let codec_state = codec_state;
                         spawn(async move {
                             let diagnostics = super::super::settings::codec_json("hwcodec-diagnostics").await;
                             update_signal(codec_state, |state| { state.diagnostics = Arc::from(diagnostics); state.loading = false; });
                         });
-                    }, if codec_state.read().loading { "Detecting..." } else { "Detect backends" } }
-                    Button { css_class: "min-h-7 whitespace-nowrap rounded-lg bg-[#2c8cff] px-[14px] text-[13px] text-white hover:bg-[#5b91e6]", disabled: codec_state.read().benchmarking, onclick: move |_| {
+                    }, if codec_state.read().loading { {tr("Detecting...")} } else { {tr("Detect backends")} } }
+                    Button { disabled: codec_state.read().benchmarking, onclick: move |_| {
                         update_signal(codec_state, |state| state.benchmarking = true);
                         let codec_state = codec_state;
                         spawn(async move {
                             let benchmark = super::super::settings::codec_json("hwcodec-benchmark").await;
                             update_signal(codec_state, |state| { state.benchmark = Arc::from(benchmark); state.benchmarking = false; });
                         });
-                    }, if codec_state.read().benchmarking { "Testing..." } else { "Test performance" } }
+                    }, if codec_state.read().benchmarking { {tr("Testing...")} } else { {tr("Test performance")} } }
                 }
                 CodecDiagnostics { state: codec_state }
-                SettingChoice { label: "Default Codec".to_owned(), description: "Select the preferred codec for remote sessions.".to_owned(), option_key: OPTION_CODEC_PREFERENCE,
+
+                    }
+                }
+            },
+            "settings:display" => rsx! {
+                SettingsCard { title: "Default View Style",
+                    SettingChoice { label: "Default View Style", radio: true, scope: SettingsScope::UserDefault, option_key: OPTION_VIEW_STYLE, values: choices(&[("original", "Scale original"), ("adaptive", "Scale adaptive")]), default_value: "original" }
+                }
+                SettingsCard { title: "Default Scroll Style",
+                    SettingChoice { label: "Default Scroll Style", radio: true, scope: SettingsScope::UserDefault, option_key: OPTION_SCROLL_STYLE, values: choices(&[("scrollauto", "ScrollAuto"), ("scrollbar", "Scrollbar"), ("scrolledge", "ScrollEdge")]), default_value: "scrollauto" }
+                }
+                SettingsCard { title: "Default Image Quality",
+                    DefaultImageQuality {}
+                }
+                SettingsCard { title: "Default Codec",
+                SettingChoice { label: "Default Codec".to_owned(), scope: SettingsScope::UserDefault, radio: true, option_key: OPTION_CODEC_PREFERENCE,
                     values: {
                         let mut values = vec![("auto".to_owned(), "Auto".to_owned()), ("vp8".to_owned(), "VP8".to_owned()), ("vp9".to_owned(), "VP9".to_owned()), ("av1".to_owned(), "AV1".to_owned())];
                         if h264_supported { values.push(("h264".to_owned(), "H264".to_owned())); }
                         if h265_supported { values.push(("h265".to_owned(), "H265".to_owned())); }
                         values
                     }, default_value: "auto".to_owned() }
+                }
+                SettingsCard { title: "Other Default Options",
+                    SettingToggle { label: "View only", option_key: OPTION_VIEW_ONLY, scope: SettingsScope::UserDefault, default_on: false }
+                    SettingToggle { label: "Show remote cursor", option_key: OPTION_SHOW_REMOTE_CURSOR, scope: SettingsScope::UserDefault, default_on: false }
+                    SettingToggle { label: "Show quality monitor", option_key: OPTION_SHOW_QUALITY_MONITOR, scope: SettingsScope::UserDefault, default_on: false }
+                    SettingToggle { label: "Disable audio", option_key: OPTION_DISABLE_AUDIO, scope: SettingsScope::UserDefault, default_on: false }
+                    SettingToggle { label: "Enable file copy and paste", option_key: OPTION_ENABLE_FILE_COPY_PASTE, scope: SettingsScope::UserDefault, default_on: true }
+                    SettingToggle { label: "Disable clipboard", option_key: OPTION_DISABLE_CLIPBOARD, scope: SettingsScope::UserDefault, default_on: false }
+                }
             },
-            "settings:display" => rsx! {
-                SettingChoice { label: "Default View Style".to_owned(), description: "Choose how the remote image is fitted to the window.".to_owned(), option_key: OPTION_VIEW_STYLE, values: vec![("original".to_owned(), "Scale original".to_owned()), ("adaptive".to_owned(), "Scale adaptive".to_owned())], default_value: "adaptive".to_owned() }
-                SettingChoice { label: "Default Scroll Style".to_owned(), description: "Choose how scrolling behaves when the remote image is larger than the window.".to_owned(), option_key: OPTION_SCROLL_STYLE, values: vec![("scrollauto".to_owned(), "ScrollAuto".to_owned()), ("scrollbar".to_owned(), "Scrollbar".to_owned()), ("scrolledge".to_owned(), "ScrollEdge".to_owned())], default_value: "scrollauto".to_owned() }
-                SettingChoice { label: "Default Image Quality".to_owned(), description: "Balance image quality and reaction time.".to_owned(), option_key: OPTION_IMAGE_QUALITY, values: vec![("best".to_owned(), "Good image quality".to_owned()), ("balanced".to_owned(), "Balanced".to_owned()), ("low".to_owned(), "Optimize reaction time".to_owned()), ("custom".to_owned(), "Custom".to_owned())], default_value: "balanced".to_owned() }
-                {setting("Show remote cursor", "Show the remote pointer in the session view.", OPTION_SHOW_REMOTE_CURSOR, true)}
-                {setting("Disable remote audio", "Stop receiving audio from remote sessions.", OPTION_DISABLE_AUDIO, false)}
+            "settings:account" => rsx! {
+                SettingsCard { title: "Account",
+                    p { class: "px-[15px] pb-2 text-[15px] text-rd-muted", {tr("Account sign-in is not yet available in the native interface.")} }
+                }
             },
-            "settings:account" => rsx! { div { class: "max-w-[650px] py-6 text-[#d4d5d7] [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-normal [&_h3]:text-[#e9e9e9] [&_p]:text-xs [&_p]:text-rd-muted", h3 { "Account" } p { "Sign in to manage address books and account settings." } Button { css_class: "min-h-7 whitespace-nowrap rounded-lg bg-[#2c8cff] px-[14px] text-[13px] text-white hover:bg-[#5b91e6]", "Sign in" } } },
-            "settings:printer" => rsx! { {setting("Enable remote printer", "Allow printers to be redirected during remote sessions.", OPTION_ENABLE_REMOTE_PRINTER, true)} },
-            "settings:about" => rsx! { div { class: "max-w-[650px] py-6 text-[#d4d5d7] [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-normal [&_h3]:text-[#e9e9e9] [&_p]:text-xs [&_p]:text-rd-muted [&_a]:text-xs [&_a]:text-rd-muted", h3 { "RustDesk" } p { "Remote desktop client" } p { "Version: {version}" } a { href: "https://rustdesk.com", target: "_blank", "rustdesk.com" } } },
+            "settings:printer" => rsx! {
+                if cfg!(target_os = "windows") {
+                    SettingsCard { title: "Printer",
+                        SettingToggle { label: "Enable remote printer", option_key: OPTION_ENABLE_REMOTE_PRINTER, default_on: true }
+                    }
+                }
+            },
+            "settings:about" => rsx! {
+                SettingsCard { title: "RustDesk",
+                    div { class: "flex flex-col gap-3 px-[15px] pb-2 text-[15px]",
+                        p { {tr("Version")} ": " {version} }
+                        Button { css_class: "w-fit bg-transparent p-0 text-rd-accent", variant: ButtonVariant::Ghost, onclick: move |_| open_external_url("https://rustdesk.com"), {tr("Website")} }
+                        Button { css_class: "w-fit bg-transparent p-0 text-rd-accent", variant: ButtonVariant::Ghost, onclick: move |_| open_external_url("https://rustdesk.com/privacy"), {tr("Privacy Statement")} }
+                    }
+                }
+                div { class: "box-border mt-[15px] w-full max-w-[540px] rounded bg-[#0071ff] p-5 text-[15px] leading-6 text-white",
+                    p { "RustDesk" }
+                    p { {tr("Licensed under the GNU Affero General Public License v3.0")} }
+                }
+            },
             _ => rsx! {
-                {toolbar_docking_setting()}
-                {setting("Allow automatic updates", "Allow RustDesk to install updates automatically when available.", OPTION_ALLOW_AUTO_UPDATE, false)}
-                {setting("Confirm before closing multiple tabs", "Ask for confirmation when closing multiple remote tabs.", OPTION_ENABLE_CONFIRM_CLOSING_TABS, true)}
-                {setting("Open connection in new tab", "Open each outgoing connection in a separate tab.", OPTION_ENABLE_OPEN_NEW_CONNECTIONS_IN_TABS, true)}
-                {setting("Check for software update on startup", "Check for a newer RustDesk version when starting.", OPTION_ENABLE_CHECK_UPDATE, true)}
-                {setting("Enable file copy and paste", "Allow copying files through the remote session clipboard.", OPTION_ENABLE_FILE_COPY_PASTE, true)}
+                SettingsCard { title: "Language", super::super::i18n::LanguageSetting {} }
+                SettingsCard { title: "Hardware Codec",
+                    SettingToggle { label: "Enable hardware codec", option_key: OPTION_ENABLE_HWCODEC, default_on: true, disabled: !has_hardware_codec,
+                        on_value_change: move |enabled| {
+                            hardware_codec.set(enabled);
+                            spawn(async move {
+                                let diagnostics = super::codec_json("hwcodec-diagnostics").await;
+                                update_signal(codec_state, |state| state.diagnostics = Arc::from(diagnostics));
+                            });
+                        }
+                    }
+                }
+                SettingsCard { title: "Other",
+                    SettingToggle { label: "Confirm before closing multiple tabs", option_key: OPTION_ENABLE_CONFIRM_CLOSING_TABS, scope: SettingsScope::Local, default_on: true }
+                    SettingToggle { label: "Allow toolbar docking to all edges", option_key: OPTION_ALLOW_MULTI_EDGE_TOOLBAR_DOCK, scope: SettingsScope::Local, default_on: false }
+                    SettingToggle { label: "Adaptive bitrate", option_key: OPTION_ENABLE_ABR, default_on: true }
+                    SettingToggle { label: "Open connection in new tab", option_key: OPTION_ENABLE_OPEN_NEW_CONNECTIONS_IN_TABS, scope: SettingsScope::Local, default_on: true }
+                    SettingToggle { label: "Reuse one connection for port forwarding", option_key: OPTION_ENABLE_PORT_FORWARD_MUX, scope: SettingsScope::Local, default_on: true }
+                    SettingToggle { label: "Check for software update on startup", option_key: OPTION_ENABLE_CHECK_UPDATE, scope: SettingsScope::Local, default_on: true }
+                    SettingToggle { label: "Allow automatic updates", option_key: OPTION_ALLOW_AUTO_UPDATE, default_on: false }
+                    SettingToggle { label: "Enable TCP hole punching", option_key: OPTION_ENABLE_TCP_PUNCH, scope: SettingsScope::Local, default_on: true }
+                    SettingToggle { label: "Enable UDP hole punching", option_key: OPTION_ENABLE_UDP_PUNCH, scope: SettingsScope::Local, default_on: true }
+                    SettingToggle { label: "Enable IPv6 hole punching", option_key: OPTION_ENABLE_IPV6_PUNCH, scope: SettingsScope::Local, default_on: true }
+                    SettingToggle { label: "Keep awake during outgoing sessions", option_key: OPTION_KEEP_AWAKE_DURING_OUTGOING_SESSIONS, scope: SettingsScope::Local, default_on: true }
+                }
             },
         }
     }
 }
 
-fn toolbar_docking_setting() -> Element {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    return rsx! { crate::dioxus_ui::views::docking::DockingSetting {} };
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    rsx! {}
+fn choices(values: &[(&str, &str)]) -> Vec<(String, String)> {
+    values
+        .iter()
+        .map(|(value, title)| ((*value).to_owned(), (*title).to_owned()))
+        .collect()
+}
+
+#[component]
+fn PermissionsSettings() -> Element {
+    let mut mode = use_signal(|| option(OPTION_ACCESS_MODE));
+    let forced = match mode().as_str() {
+        "full" => Some(true),
+        "view" => Some(false),
+        _ => None,
+    };
+    rsx! {
+        SettingsCard { title: "Permissions",
+            SettingChoice { label: "", option_key: OPTION_ACCESS_MODE, values: choices(&[("", "Custom"), ("full", "Full Access"), ("view", "Screen Share")]), default_value: "", on_value_change: move |value| mode.set(value) }
+            for (key, title) in [
+                (OPTION_ENABLE_KEYBOARD, "Enable keyboard/mouse"),
+                (OPTION_ENABLE_CLIPBOARD, "Enable clipboard"),
+                (OPTION_ENABLE_FILE_TRANSFER, "Enable file transfer"),
+                (OPTION_ENABLE_AUDIO, "Enable audio"),
+                (OPTION_ENABLE_CAMERA, "Enable camera"),
+                (OPTION_ENABLE_TERMINAL, "Enable terminal"),
+                (OPTION_ENABLE_TUNNEL, "Enable TCP tunneling"),
+                (OPTION_ENABLE_REMOTE_RESTART, "Enable remote restart"),
+                (OPTION_ENABLE_RECORD_SESSION, "Enable recording session"),
+                (OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, "Enable remote configuration modification"),
+            ] {
+                SettingToggle { key: "{key}", label: title, option_key: key, default_on: key != OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION, disabled: forced.is_some(), value_override: forced }
+            }
+        }
+    }
+}
+
+#[component]
+fn PasswordSettings() -> Element {
+    let mut approval = use_signal(|| option(OPTION_APPROVE_MODE));
+    let mut method = use_signal(|| option(OPTION_VERIFICATION_METHOD));
+    rsx! {
+        SettingsCard { title: "Password",
+            SettingChoice { label: "", option_key: OPTION_APPROVE_MODE, values: choices(&[("password", "Accept sessions via password"), ("click", "Accept sessions via click"), ("", "Accept sessions via both")]), default_value: "", on_value_change: move |value| approval.set(value) }
+            if approval() != "click" {
+                SettingChoice { label: "Password verification", radio: true, option_key: OPTION_VERIFICATION_METHOD, values: choices(&[("use-temporary-password", "Use one-time password"), ("use-permanent-password", "Use permanent password"), ("use-both-passwords", "Use both passwords")]), default_value: "use-temporary-password", on_value_change: move |value| method.set(value) }
+                if method() != "use-permanent-password" {
+                    SettingChoice { label: "One-time password length", option_key: OPTION_TEMPORARY_PASSWORD_LENGTH, values: choices(&[("6", "6"), ("8", "8"), ("10", "10")]), default_value: "6" }
+                }
+            }
+        }
+    }
 }

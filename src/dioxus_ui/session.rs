@@ -1,24 +1,25 @@
 use super::prelude::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod cursor;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-mod cursor_texture;
 mod frame;
 mod input;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod browser_input;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod remote_state;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(in crate::dioxus_ui) use remote_state::{ChatMessage, RemoteUiState};
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-mod video;
 
 #[cfg(test)]
 pub(crate) use frame::encode_frame;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use frame::frame_worker;
-use frame::{FramePacket, FramePipeline};
+pub(in crate::dioxus_ui) use frame::FramePacket;
+use frame::FramePipeline;
 #[cfg(test)]
 pub(crate) use input::remote_point;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(in crate::dioxus_ui) use browser_input::{BrowserInput, send_browser_input};
 pub(crate) use input::{send_keyboard_event, send_mouse_event, send_touch_event, send_wheel_event};
 
 #[derive(Clone, Default)]
@@ -75,15 +76,27 @@ impl DioxusHandler {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub(in crate::dioxus_ui) fn native_video(&self) -> Option<frame::NativeVideo> {
-        self.frames
-            .as_ref()
-            .map(|frames| frame::NativeVideo::new(frames.clone()))
+    pub(in crate::dioxus_ui) fn take_frame(&self) -> Option<FramePacket> {
+        self.frames.as_ref()?.pending.lock().unwrap().take()
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(in crate::dioxus_ui) fn recycle_frame(&self, raw: Vec<u8>) {
+        if let Some(frames) = &self.frames {
+            frames.recycle(raw);
+        }
+    }
+
+    #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
     pub(in crate::dioxus_ui) fn snapshot(&self) -> Option<DioxusUiState> {
         self.state?.try_peek().ok().map(|state| state.clone())
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(in crate::dioxus_ui) fn read_state(
+        &self,
+    ) -> Option<dioxus::signals::ReadableRef<'_, SyncSignal<DioxusUiState>>> {
+        self.state.as_ref()?.try_peek().ok()
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -115,7 +128,6 @@ impl InvokeUiSession for DioxusHandler {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
             self.cursors.lock().unwrap().store(_cd);
-            crate::dioxus_ui::native::request_redraw();
         }
     }
 
@@ -123,7 +135,6 @@ impl InvokeUiSession for DioxusHandler {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
             self.cursors.lock().unwrap().select(&_id);
-            crate::dioxus_ui::native::request_redraw();
         }
     }
 
@@ -131,7 +142,6 @@ impl InvokeUiSession for DioxusHandler {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         {
             self.cursors.lock().unwrap().position = Some((_cp.x, _cp.y));
-            crate::dioxus_ui::native::request_redraw();
         }
     }
 
@@ -148,12 +158,17 @@ impl InvokeUiSession for DioxusHandler {
             state.width = display.width;
             state.height = display.height;
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            if let Some(info) = state.displays.get_mut(display.display.max(0) as usize) {
-                info.x = display.x;
-                info.y = display.y;
-                info.width = display.width;
-                info.height = display.height;
-                info.cursor_embedded = display.cursor_embedded;
+            {
+                Arc::make_mut(&mut state.remote).resolutions =
+                    display.resolutions.resolutions.clone();
+                if let Some(info) = state.displays.get_mut(display.display.max(0) as usize) {
+                    info.x = display.x;
+                    info.y = display.y;
+                    info.width = display.width;
+                    info.height = display.height;
+                    info.cursor_embedded = display.cursor_embedded;
+                    info.original_resolution = display.original_resolution.clone();
+                }
             }
             state.viewport_width = 0.0;
             state.viewport_height = 0.0;
@@ -165,6 +180,11 @@ impl InvokeUiSession for DioxusHandler {
             state.peer_name = peer_info.username.clone();
             state.displays = peer_info.displays.clone();
             state.current_display = peer_info.current_display;
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                Arc::make_mut(&mut state.remote).resolutions =
+                    peer_info.resolutions.resolutions.clone();
+            }
         });
     }
 
@@ -457,6 +477,14 @@ pub(super) fn new_session(
     match session.lc.write() {
         Ok(mut lc) => lc.initialize(peer_id, conn_type, None, force_relay, None, None, None),
         Err(error) => log::error!("Failed to initialize Dioxus session: {error}"),
+    }
+    if session.get_image_quality() == "custom" {
+        let fps = session
+            .get_option(OPTION_CUSTOM_FPS.to_owned())
+            .parse::<usize>()
+            .ok()
+            .filter(|fps| (5..=120).contains(fps));
+        *session.lc.read().unwrap().custom_fps.lock().unwrap() = fps;
     }
     session
 }

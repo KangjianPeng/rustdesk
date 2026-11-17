@@ -1,7 +1,7 @@
 use super::super::prelude::*;
 
 #[component]
-pub(super) fn ConnectionPanel() -> Element {
+pub(super) fn ConnectionPanel(mut suggestions_open: Signal<bool>) -> Element {
     let state = use_context::<super::super::state::AppState>();
     let status = state.ui_state.read().clone();
     let mut peer_id = state.peer_id;
@@ -34,53 +34,69 @@ pub(super) fn ConnectionPanel() -> Element {
         .collect();
 
     rsx! {
-        Card { css_class: "flex w-[min(360px,100%)] max-w-full flex-col rounded-[13px] border border-[#24252b] bg-rd-surface px-5 pt-6 pb-[22px] max-[841px]:w-[min(100%,420px)] max-[841px]:px-3.5 max-[841px]:py-[18px]",
-            h2 { class: "mb-[15px] flex items-center gap-1 text-[19px] font-normal text-[#ececec]",
-                "Control Remote Desktop"
+        Card { css_class: "relative z-20 w-[360px] max-w-full shrink-0 px-6",
+            h2 { class: "flex items-center gap-2 font-semibold",
+                {tr("Control Remote Desktop")}
                 span {
-                    class: "inline-grid h-4 w-4 place-items-center rounded-full border border-[#777] text-[11px] text-[#999]",
-                    title: "Enter the remote ID",
-                    CircleHelp { class: "block h-3 w-3 [&_svg]:block [&_svg]:size-full" }
+                    class: "inline-flex h-4 w-4 shrink-0 items-center justify-center text-[#999]",
+                    title: tr("Enter the remote ID"),
+                    CircleHelp { class: "block h-4 w-4 [&_svg]:block [&_svg]:size-full" }
                 }
             }
-            div { class: "flex flex-row items-center gap-2 max-[841px]:flex-wrap",
-                div { class: "relative min-w-0 flex-1",
-                    div {
+            div { class: "flex min-w-0 flex-col gap-3",
+                div { class: "relative z-30 w-full min-w-0 border-transparent",
+                    div { class: "border-transparent",
+                        onmousedown: move |event| {
+                            event.stop_propagation();
+                            suggestions_open.set(true);
+                        },
                         onkeydown: move |event: KeyboardEvent| {
-                            if event.data.key().to_string() == "Enter" {
+                            let key = event.data.key().to_string();
+                            if key == "Escape" || key == "Tab" { suggestions_open.set(false); }
+                            if key == "Enter" {
                                 event.prevent_default();
                                 start_session(session, peer_id(), password(), connection_args(&connection_mode()), ui_state);
                             }
                         },
                         Input {
-                            css_class: "w-full min-h-[43px] [&>input]:min-h-[43px] [&>input]:rounded-lg [&>input]:border [&>input]:border-[#55575b] [&>input]:bg-rd-surface [&>input]:px-[15px] [&>input]:py-2.5 [&>input]:text-[22px] [&>input]:text-[#ededed] [&>input]:outline-none [&>input]:placeholder:text-[#818388] [&>input:focus]:border-[#6a9be9]",
+                            css_class: "w-full",
                             value: format_remote_id(&peer_id()),
                             placeholder: "Enter remote ID",
-                            oninput: move |event: FormEvent| peer_id.set(format_remote_id(&event.value())),
+                            oninput: move |event: FormEvent| {
+                                peer_id.set(format_remote_id(&event.value()));
+                                suggestions_open.set(true);
+                            },
                         }
-                    }
-                    if !matching_peers.is_empty() {
-                        div { class: "absolute inset-x-0 top-[calc(100%+4px)] z-20 max-h-[220px] overflow-auto rounded-[5px] border border-[#4a4c51] bg-[#2b2c31] p-1 shadow-[0_6px_18px_#0008]", role: "listbox",
-                            for peer in matching_peers {
-                                {
-                                    let suggested_id = peer.id.clone();
-                                    let selected_id = suggested_id.clone();
-                                    let display_name = peer_display_name(&peer);
-                                    let subtitle = peer_subtitle(&peer);
-                                    let online = peer.online;
-                                    rsx! {
-                                        Button {
-                                            key: "suggestion-{peer.id}",
-                                            css_class: "flex min-h-[34px] w-full min-w-0 justify-start gap-2 px-2 py-1.5 text-left text-[#d0d1d3] [&>button]:flex [&>button]:w-full [&>button]:min-w-0 [&>button]:justify-start [&>button]:gap-2",
-                                            variant: ButtonVariant::Ghost,
-                                            size: ButtonSize::Sm,
-                                            onclick: move |_| peer_id.set(format_remote_id(&selected_id)),
-                                            span { class: if online { "h-2 w-2 shrink-0 self-center rounded-full bg-[#42c49c]" } else { "h-2 w-2 shrink-0 self-center rounded-full bg-[#777a7f]" } }
-                                            span { class: "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap", "{display_name}" }
-                                            if !subtitle.is_empty() {
-                                                span { class: "max-w-[38%] overflow-hidden text-ellipsis whitespace-nowrap text-[#9da0a6]", "{subtitle}" }
+                        if suggestions_open() && !matching_peers.is_empty() {
+                            div { class: "absolute inset-x-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md", role: "listbox",
+                                for peer in matching_peers {
+                                    {
+                                        let suggested_id = peer.id.clone();
+                                        let selected_id = suggested_id.clone();
+                                        let display_name = peer_display_name(&peer);
+                                        let subtitle = peer_subtitle(&peer);
+                                        let online = peer.online;
+                                        rsx! {
+                                            Button {
+                                                key: "suggestion-{peer.id}",
+                                                css_class: "h-auto min-h-11 w-full min-w-0 justify-start text-left",
+                                                variant: ButtonVariant::Ghost,
+                                                size: ButtonSize::Sm,
+                                                onclick: move |_| {
+                                                    peer_id.set(format_remote_id(&selected_id));
+                                                    suggestions_open.set(false);
+                                                },
+                                                span { class: if online { "h-2 w-2 shrink-0 self-center rounded-full bg-[#42c49c]" } else { "h-2 w-2 shrink-0 self-center rounded-full bg-[#777a7f]" } }
+                                                span { class: "block min-w-0 flex-1",
+                                                    span { class: "block truncate text-xs", title: "{display_name}", "{display_name}" }
+                                                    if !subtitle.is_empty() {
+                                                        span { class: "block truncate text-[11px] text-[#9da0a6]", title: "{subtitle}", "{subtitle}" }
+                                                    }
+                                                    if display_name != suggested_id {
+                                                        span { class: "block truncate font-mono text-[11px] text-[#8a8d93]", title: "{suggested_id}", "{suggested_id}" }
+                                                    }
+                                                }
                                             }
-                                            span { class: "font-mono text-[#8a8d93] whitespace-nowrap", "{suggested_id}" }
                                         }
                                     }
                                 }
@@ -90,14 +106,14 @@ pub(super) fn ConnectionPanel() -> Element {
                 }
                 if status.password_required {
                     Input {
-                        css_class: "min-h-[43px] min-w-0 flex-1 [&>input]:min-h-[43px] [&>input]:rounded-lg [&>input]:border [&>input]:border-[#55575b] [&>input]:bg-rd-surface [&>input]:px-[15px] [&>input]:py-2.5 [&>input]:text-[22px] [&>input]:text-[#ededed] [&>input]:outline-none [&>input]:placeholder:text-[#818388] [&>input:focus]:border-[#6a9be9]",
+                        css_class: "min-w-0 flex-1",
                         r#type: InputType::Password,
                         value: password(),
                         placeholder: "Password",
                         oninput: move |event: FormEvent| password.set(event.value()),
                     }
                     Button {
-                        css_class: "min-h-[43px] whitespace-nowrap rounded-lg bg-[#2c8cff] px-[14px] text-[13px] text-white hover:bg-[#5b91e6]",
+                        css_class: "shrink-0",
                         onclick: move |_| {
                             if let Some(active) = session.read().as_ref() {
                                 active.login(String::new(), String::new(), password(), (state.remember_password)());
@@ -107,17 +123,17 @@ pub(super) fn ConnectionPanel() -> Element {
                                 });
                             }
                         },
-                        "Continue"
+                        {tr("Continue")}
                     }
                 } else if status.two_factor_required {
                     Input {
-                        css_class: "min-h-[43px] min-w-0 flex-1 [&>input]:min-h-[43px] [&>input]:rounded-lg [&>input]:border [&>input]:border-[#55575b] [&>input]:bg-rd-surface [&>input]:px-[15px] [&>input]:py-2.5 [&>input]:text-[22px] [&>input]:text-[#ededed] [&>input]:outline-none [&>input]:placeholder:text-[#818388] [&>input:focus]:border-[#6a9be9]",
+                        css_class: "min-w-0 flex-1",
                         value: two_factor_code(),
                         placeholder: "Two-factor code",
                         oninput: move |event: FormEvent| two_factor_code.set(event.value()),
                     }
                     Button {
-                        css_class: "min-h-[43px] whitespace-nowrap rounded-lg bg-[#2c8cff] px-[14px] text-[13px] text-white hover:bg-[#5b91e6]",
+                        css_class: "shrink-0",
                         onclick: move |_| {
                             if let Some(active) = session.read().as_ref() {
                                 active.send2fa(two_factor_code(), false);
@@ -127,32 +143,33 @@ pub(super) fn ConnectionPanel() -> Element {
                                 });
                             }
                         },
-                        "Verify"
+                        {tr("Verify")}
                     }
                 } else if session.read().is_none() {
-                    div { class: "relative flex items-center gap-1 max-[841px]:ml-auto",
+                    div { class: "relative flex w-full shrink-0 items-center justify-end border-transparent",
                         Button {
-                            css_class: "min-h-[43px] whitespace-nowrap rounded-lg bg-[#2c8cff] px-[14px] text-[13px] text-white hover:bg-[#5b91e6]",
+                            css_class: "shrink-0",
                             disabled: peer_id().trim().is_empty(),
+                            aria_label: "Connect",
                             onclick: move |_| start_session(session, peer_id(), password(), connection_args(&connection_mode()), ui_state),
-                            "Connect"
+                            {tr("Connect")}
                         }
                         Button {
-                            css_class: "h-[25px] w-[25px] bg-transparent p-0 text-[19px] text-[#a8aaad] [&>button]:h-full [&>button]:w-full",
+                            css_class: "ml-2",
                             title: "Connection type",
                             variant: ButtonVariant::Ghost,
                             size: ButtonSize::IconSm,
                             onclick: move |_| connection_menu_open.set(!connection_menu_open()),
-                            "⋮"
+                            icons::EllipsisVertical { class: "block h-[14px] w-[14px] [&_svg]:block [&_svg]:size-full" }
                         }
                         if connection_menu_open() {
-                            div { class: "absolute top-[calc(100%+4px)] right-0 z-20 w-[150px] rounded-[5px] border border-[#4a4c51] bg-[#2b2c31] py-1 shadow-[0_6px_18px_#0008]",
+                            div { class: "absolute top-full right-0 z-20 mt-1 w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
                                 for mode in ["Connect", "Transfer file", "View camera", "Terminal (beta)", "TCP tunneling"] {
                                     Button {
                                         css_class: if connection_mode() == mode {
-                                            "flex w-full bg-[#3b5d91] text-white [&>button]:w-full [&>button]:justify-start [&>button]:px-3 [&>button]:py-2 [&>button]:text-left [&>button]:text-xs [&>button]:text-inherit"
+                                            "w-full justify-start bg-accent"
                                         } else {
-                                            "flex w-full text-[#d0d1d3] [&>button]:w-full [&>button]:justify-start [&>button]:px-3 [&>button]:py-2 [&>button]:text-left [&>button]:text-xs [&>button]:text-inherit hover:bg-[#3b5d91] hover:text-white hover:[&>button]:text-white"
+                                            "w-full justify-start"
                                         },
                                         variant: ButtonVariant::Ghost,
                                         size: ButtonSize::Sm,
@@ -160,7 +177,7 @@ pub(super) fn ConnectionPanel() -> Element {
                                             connection_mode.set(mode.to_owned());
                                             connection_menu_open.set(false);
                                         },
-                                        "{mode}"
+                                        {tr(mode)}
                                     }
                                 }
                             }
@@ -168,7 +185,7 @@ pub(super) fn ConnectionPanel() -> Element {
                     }
                 } else if status.retry_available {
                     Button {
-                        css_class: "min-h-[43px] whitespace-nowrap rounded-lg bg-[#2c8cff] px-[14px] text-[13px] text-white hover:bg-[#5b91e6]",
+                        css_class: "shrink-0",
                         onclick: move |_| {
                             if let Some(active) = session.read().as_ref() {
                                 active.reconnect(false);
@@ -178,12 +195,11 @@ pub(super) fn ConnectionPanel() -> Element {
                                 });
                             }
                         },
-                        "Retry"
+                        {tr("Retry")}
                     }
                 } else {
                     Button {
-                        css_class: "min-h-[43px] whitespace-nowrap rounded-lg bg-[#8e4650] px-[14px] text-[13px] text-white",
-                        variant: ButtonVariant::Destructive,
+                                                variant: ButtonVariant::Destructive,
                         onclick: move |_| {
                             if let Some(active) = session.read().as_ref() {
                                 active.close();
@@ -196,15 +212,15 @@ pub(super) fn ConnectionPanel() -> Element {
                                 state.retry_available = false;
                             });
                         },
-                        "Disconnect"
+                        {tr("Disconnect")}
                     }
                 }
             }
             if !status.status.is_empty() {
-                p { class: "mt-[13px] text-center text-xs text-[#79a9ee]", "{status.status}" }
+                p { class: "mt-[13px] text-center text-xs text-[#79a9ee]", {tr(&status.status)} }
             }
             if !status.message.is_empty() {
-                p { class: "mt-2 [overflow-wrap:anywhere] text-center text-[11px] text-rd-muted", "{status.message}" }
+                p { class: "mt-2 [overflow-wrap:anywhere] text-center text-[11px] text-rd-muted", {tr(&status.message)} }
             }
         }
     }

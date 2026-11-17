@@ -1,36 +1,106 @@
 use super::super::prelude::*;
 
+#[derive(Clone, Copy, Default, PartialEq)]
+pub(crate) enum SettingsScope {
+    #[default]
+    Server,
+    Local,
+    UserDefault,
+}
+
+impl SettingsScope {
+    fn read(self, key: &str) -> String {
+        match self {
+            Self::Server => option(key),
+            Self::Local => crate::ui_interface::get_local_option(key.to_owned()),
+            Self::UserDefault => hbb_common::config::UserDefaultConfig::load().get(key),
+        }
+    }
+
+    async fn write(self, key: &str, value: String) -> Result<(), String> {
+        match self {
+            Self::Server => crate::ui_interface::set_option_async(key.to_owned(), value)
+                .await
+                .map_err(|error| format!("Unable to save this setting: {error:#}")),
+            Self::Local => {
+                crate::ui_interface::set_local_option(key.to_owned(), value);
+                Ok(())
+            }
+            Self::UserDefault => {
+                hbb_common::config::UserDefaultConfig::load().set(key.to_owned(), value);
+                Ok(())
+            }
+        }
+    }
+}
+
+#[component]
+pub(crate) fn SettingsCard(title: String, children: Element) -> Element {
+    rsx! {
+        Card { css_class: "mt-4 w-full max-w-[540px] px-4",
+            h2 { class: "font-semibold", {tr(&title)} }
+            {children}
+        }
+    }
+}
+
 #[component]
 pub(crate) fn SettingToggle(
     label: String,
-    description: String,
+    #[props(default)] description: String,
     option_key: &'static str,
     default_on: bool,
+    #[props(default)] scope: SettingsScope,
+    #[props(default)] reverse: bool,
+    #[props(default)] disabled: bool,
+    value_override: Option<bool>,
+    on_value_change: Option<EventHandler<bool>>,
 ) -> Element {
-    let initial = match option(option_key).as_str() {
+    let mut enabled = use_signal(|| match scope.read(option_key).as_str() {
         "Y" => true,
         "N" => false,
         _ => default_on,
-    };
-    let mut enabled = use_signal(|| initial);
-    rsx! {
-        div { class: "grid w-full max-w-[650px] grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b border-[#35373a] py-[15px] max-[560px]:items-start max-[560px]:gap-3 [&_h3]:mb-[5px] [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-[#e3e3e3] [&_p]:text-xs [&_p]:text-rd-muted max-[560px]:[&_h3]:[overflow-wrap:anywhere] max-[560px]:[&_p]:[overflow-wrap:anywhere]",
-            div { class: "min-w-0", h3 { "{label}" } p { "{description}" } }
-            Checkbox {
-                css_class: "h-[18px] w-[18px] shrink-0 [&>[data-name=Checkbox]]:relative [&>[data-name=Checkbox]]:grid [&>[data-name=Checkbox]]:size-[18px] [&>[data-name=Checkbox]]:place-items-center [&>[data-name=Checkbox]]:rounded-[3px] [&>[data-name=Checkbox]]:border [&>[data-name=Checkbox]]:border-[#777b83] [&>[data-name=Checkbox]]:bg-rd-panel [&>[data-name=Checkbox]]:text-white [&>[data-name=Checkbox]]:leading-none [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:absolute [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:inset-0 [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:m-0 [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:grid [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]]:place-items-center [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]>svg]:block [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]>svg]:size-[14px] [&>[data-name=Checkbox]>[data-name=CheckboxIndicator]>svg]:shrink-0 [&>[data-state=checked]]:border-rd-accent [&>[data-state=checked]]:bg-rd-accent",
-                checked: enabled(),
-                aria_label: label.clone(),
-                on_checked_change: move |value| {
-                    enabled.set(value);
-                    let option_key = option_key.to_owned();
-                    let option_value = if value { "Y".to_owned() } else { "N".to_owned() };
-                    spawn(async move {
-                        if let Err(error) = crate::ui_interface::set_option_async(option_key, option_value).await {
-                            log::error!("Failed to update setting: {error:#}");
-                        }
-                    });
-                },
+    });
+    let mut error = use_signal(String::new);
+    let checked = value_override.unwrap_or(enabled()) != reverse;
+    let change = EventHandler::new(move |checked: bool| {
+        let value = checked != reverse;
+        enabled.set(value);
+        spawn(async move {
+            match scope
+                .write(option_key, if value { "Y" } else { "N" }.to_owned())
+                .await
+            {
+                Ok(()) => {
+                    error.set(String::new());
+                    if let Some(handler) = on_value_change {
+                        handler.call(value);
+                    }
+                }
+                Err(message) => {
+                    log::error!("Failed to update setting {option_key}: {message}");
+                    error.set(message);
+                }
             }
+        });
+    });
+    rsx! {
+        div { class: "grid min-h-9 grid-cols-[16px_minmax(0,1fr)] items-center gap-x-2.5",
+            Checkbox {
+                checked,
+                disabled,
+                aria_label: label.clone(),
+                on_checked_change: move |value| change.call(value),
+            }
+            Button {
+                css_class: "h-auto min-h-7 w-full justify-start p-0 text-left whitespace-normal",
+                variant: ButtonVariant::Ghost,
+                disabled,
+                onclick: move |_| change.call(!checked),
+                {tr(&label)}
+            }
+            if !description.is_empty() { p { class: "col-start-2 mt-1 text-xs text-rd-muted", {tr(&description)} } }
+            if !error().is_empty() { p { role: "alert", class: "col-span-2 text-xs text-red-400", "{error}" } }
         }
     }
 }
@@ -38,17 +108,21 @@ pub(crate) fn SettingToggle(
 #[component]
 pub(crate) fn SettingChoice(
     label: String,
-    description: String,
+    #[props(default)] description: String,
     option_key: &'static str,
     values: Vec<(String, String)>,
     default_value: String,
+    #[props(default)] scope: SettingsScope,
+    #[props(default)] radio: bool,
+    #[props(default)] disabled: bool,
+    on_value_change: Option<EventHandler<String>>,
 ) -> Element {
-    let configured = option(option_key);
     let mut selected = use_signal(|| {
+        let configured = scope.read(option_key);
         if configured.is_empty() {
             default_value.clone()
         } else {
-            configured.clone()
+            configured
         }
     });
     let fallback_label = values
@@ -62,37 +136,114 @@ pub(crate) fn SettingChoice(
         .find(|(value, _)| value == &selected())
         .map(|(_, label)| label.clone())
         .unwrap_or_else(|| fallback_label.clone());
+    let mut error = use_signal(String::new);
+    let change = EventHandler::new(move |value: String| {
+        selected.set(value.clone());
+        if let Some(handler) = on_value_change {
+            handler.call(value.clone());
+        }
+        spawn(async move {
+            match scope.write(option_key, value).await {
+                Ok(()) => error.set(String::new()),
+                Err(message) => {
+                    log::error!("Failed to update setting {option_key}: {message}");
+                    error.set(message);
+                }
+            }
+        });
+    });
+    if radio {
+        return rsx! {
+            div { role: "radiogroup", aria_label: tr(&label),
+                for (value, title) in &values {
+                    div { role: "radio", aria_checked: selected() == *value,
+                        Button {
+                            css_class: "flex min-h-9 w-full bg-transparent px-2.5 py-1 text-[15px] text-[#e3e3e3] justify-start gap-2.5 text-left",
+                            variant: ButtonVariant::Ghost,
+                            disabled,
+                            aria_label: title.clone(),
+                            onclick: { let value = value.clone(); move |_| change.call(value.clone()) },
+                            span { class: if selected() == *value { "box-border grid size-[18px] shrink-0 place-items-center rounded-full border-2 border-solid border-rd-accent" } else { "box-border grid size-[18px] shrink-0 place-items-center rounded-full border-2 border-solid border-[#999b9f]" },
+                                if selected() == *value { span { class: "block size-2.5 rounded-full bg-rd-accent" } }
+                            }
+                            span { {tr(title)} }
+                        }
+                    }
+                }
+                if !error().is_empty() { p { role: "alert", class: "px-[15px] text-xs text-red-400", "{error}" } }
+            }
+        };
+    }
     let choice_values = values.clone();
     rsx! {
-        div { class: "grid w-full max-w-[650px] grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b border-[#35373a] py-[15px] max-[560px]:items-start max-[560px]:gap-3 [&_h3]:mb-[5px] [&_h3]:text-sm [&_h3]:font-normal [&_h3]:text-[#e3e3e3] [&_p]:text-xs [&_p]:text-rd-muted max-[560px]:[&_h3]:[overflow-wrap:anywhere] max-[560px]:[&_p]:[overflow-wrap:anywhere]",
-            div { class: "min-w-0", h3 { "{label}" } p { "{description}" } }
+        div { class: "relative px-[15px] py-2",
+            if !label.is_empty() { h3 { class: "mb-2 text-[15px] font-normal", {tr(&label)} } }
+            if !description.is_empty() { p { class: "mb-2 text-xs text-rd-muted", {tr(&description)} } }
             Select {
-                css_class: "relative w-[200px] shrink-0 [&_[data-name=SelectGroup]]:m-0 [&_[data-name=SelectGroup]]:list-none [&_[data-name=SelectGroup]]:p-0 [&_[data-name=SelectOption]]:flex [&_[data-name=SelectOption]]:min-h-8 [&_[data-name=SelectOption]]:w-full [&_[data-name=SelectOption]]:items-center [&_[data-name=SelectOption]]:gap-2 [&_[data-name=SelectOption]]:rounded [&_[data-name=SelectOption]]:px-2 [&_[data-name=SelectOption]]:py-1.5 [&_[data-name=SelectOption]]:text-sm [&_[data-name=SelectOption]]:leading-5 [&_[data-name=SelectOption]]:text-[#f4f4f5] [&_[data-name=SelectOption]]:whitespace-nowrap [&_[data-name=SelectOption]]:cursor-pointer [&_[data-name=SelectOption]]:transition-colors [&_[data-name=SelectOption]:hover]:bg-[#5e5e5e] [&_[data-name=SelectOption]:hover]:text-white [&_[data-name=SelectOption][aria-selected=true]]:bg-[#5e5e5e] [&_[data-name=SelectOption][aria-selected=true]]:text-white [&_[data-name=SelectContent][data-state=closed]]:hidden [&_[data-name=SelectContent][data-state=closed]]:pointer-events-none [&_[data-name=SelectContent][data-state=open]]:block [&_[data-name=SelectContent][data-state=open]]:pointer-events-auto max-[560px]:col-span-2 max-[560px]:w-full",
-                default_value: Some(selected_label),
+                css_class: "w-[240px] max-w-full",
+                default_value: Some(selected_label.clone()),
                 on_change: move |value: Option<String>| {
                     if let Some(label) = value {
                         if let Some((value, _)) = choice_values.iter().find(|(_, title)| title == &label) {
-                            selected.set(value.clone());
-                            let option_key = option_key.to_owned();
-                            let value = value.clone();
-                            spawn(async move {
-                                if let Err(error) = crate::ui_interface::set_option_async(option_key, value).await {
-                                    log::error!("Failed to update setting: {error:#}");
-                                }
-                            });
+                            change.call(value.clone());
                         }
                     }
                 },
-                SelectTrigger { css_class: "[&>button]:flex [&>button]:min-h-9 [&>button]:w-full [&>button]:min-w-0 [&>button]:items-center [&>button]:justify-between [&>button]:gap-2 [&>button]:rounded-md [&>button]:border [&>button]:border-[#464646] [&>button]:bg-[#262626] [&>button]:px-3 [&>button]:py-2 [&>button]:text-left [&>button]:text-sm [&>button]:font-medium [&>button]:leading-5 [&>button]:text-[#fafafa] [&>button]:whitespace-nowrap [&>button]:transition-colors [&>button:hover]:border-[#595959] [&>button:hover]:bg-[#5e5e5e] [&>button:focus-visible]:outline-2 [&>button:focus-visible]:outline-[#707075] [&>button:focus-visible]:outline-offset-1 [&_[data-name=SelectValue]]:min-w-0 [&_[data-name=SelectValue]]:flex-1 [&_[data-name=SelectValue]]:overflow-hidden [&_[data-name=SelectValue]]:text-ellipsis [&_[data-name=SelectValue]]:whitespace-nowrap [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 [&_svg]:text-[#a1a1aa]",
-                    SelectValue { placeholder: Some(fallback_label) }
+                SelectTrigger {
+                    span { class: "min-w-0 flex-1 truncate text-left", {tr(&selected_label)} }
                 }
-                    SelectContent { css_class: "[&>[data-name=SelectContent]]:absolute [&>[data-name=SelectContent]]:left-0 [&>[data-name=SelectContent]]:top-[calc(100%+4px)] [&>[data-name=SelectContent]]:z-50 [&>[data-name=SelectContent]]:max-h-[260px] [&>[data-name=SelectContent]]:max-w-[calc(100vw-32px)] [&>[data-name=SelectContent]]:min-w-full [&>[data-name=SelectContent]]:w-max [&>[data-name=SelectContent]]:overflow-auto [&>[data-name=SelectContent]]:rounded-md [&>[data-name=SelectContent]]:border [&>[data-name=SelectContent]]:border-[#3f3f42] [&>[data-name=SelectContent]]:bg-[#2f2f2f] [&>[data-name=SelectContent]]:p-1 [&>[data-name=SelectContent]]:text-[#fafafa] [&>[data-name=SelectContent]]:shadow-[0_8px_24px_#0009] [&>[data-name=SelectContent][data-state=closed]]:hidden [&>[data-name=SelectContent][data-state=closed]]:pointer-events-none [&>[data-name=SelectContent][data-state=open]]:block [&>[data-name=SelectContent][data-state=open]]:pointer-events-auto [&>[data-name=SelectContent][data-position=Above]]:top-auto [&>[data-name=SelectContent][data-position=Above]]:bottom-[calc(100%+4px)] max-[560px]:[&>[data-name=SelectContent]]:right-0 max-[560px]:[&>[data-name=SelectContent]]:left-auto [&>[data-name=SelectContent]>div:first-child]:hidden [&>[data-name=SelectContent]>div:last-child]:hidden [&_[data-name=SelectOption]>svg]:hidden",
+                    SelectContent {
                     SelectGroup {
                         for (_, title) in values.iter() {
-                            SelectOption { value: Some(title.clone()), "{title}" }
+                            SelectOption { value: Some(title.clone()), {tr(title)} }
                         }
                     }
                 }
+            }
+            if !error().is_empty() { p { role: "alert", class: "mt-2 text-xs text-red-400", "{error}" } }
+        }
+    }
+}
+
+#[component]
+pub(crate) fn DefaultImageQuality() -> Element {
+    let scope = SettingsScope::UserDefault;
+    let mut mode = use_signal(|| scope.read(OPTION_IMAGE_QUALITY));
+    let mut quality = use_signal(|| scope.read(OPTION_CUSTOM_IMAGE_QUALITY));
+    let mut fps = use_signal(|| scope.read(OPTION_CUSTOM_FPS));
+    let mut status = use_signal(String::new);
+    rsx! {
+        SettingChoice { label: "Default Image Quality", radio: true, scope,
+            option_key: OPTION_IMAGE_QUALITY,
+            values: vec![("best".into(), "Good image quality".into()), ("balanced".into(), "Balanced".into()), ("low".into(), "Optimize reaction time".into()), ("custom".into(), "Custom".into())],
+            default_value: "balanced",
+            on_value_change: move |value| mode.set(value),
+        }
+        if mode() == "custom" {
+            div { class: "ml-[38px] mr-[15px] mt-2 grid grid-cols-[minmax(0,1fr)_90px] items-center gap-3 text-[15px]",
+                label { r#for: "default-quality", {tr("Bitrate (%)")} }
+                input { id: "default-quality", aria_label: tr("Default bitrate (%)"), class: "box-border h-9 min-w-0 rounded border border-solid border-[#55575b] bg-rd-content px-2 text-sm", r#type: "number", min: "10", max: "100", value: quality(), oninput: move |event| { quality.set(event.value()); status.set(String::new()); } }
+                label { r#for: "default-fps", "FPS" }
+                input { id: "default-fps", aria_label: tr("Default FPS"), class: "box-border h-9 min-w-0 rounded border border-solid border-[#55575b] bg-rd-content px-2 text-sm", r#type: "number", min: "5", max: "120", value: fps(), oninput: move |event| { fps.set(event.value()); status.set(String::new()); } }
+                div { class: "col-span-2 flex justify-end gap-2",
+                    Button { variant: ButtonVariant::Outline, onclick: move |_| {
+                        quality.set(scope.read(OPTION_CUSTOM_IMAGE_QUALITY));
+                        fps.set(scope.read(OPTION_CUSTOM_FPS));
+                        status.set(String::new());
+                    }, {tr("Cancel")} }
+                    Button { aria_label: "Save default image quality", onclick: move |_| {
+                        let values = quality().trim().parse::<u32>().ok().zip(fps().trim().parse::<u32>().ok());
+                        if let Some((quality, fps)) = values.filter(|(quality, fps)| (10..=100).contains(quality) && (5..=120).contains(fps)) {
+                            let mut config = hbb_common::config::UserDefaultConfig::load();
+                            config.set(OPTION_CUSTOM_IMAGE_QUALITY.to_owned(), quality.to_string());
+                            config.set(OPTION_CUSTOM_FPS.to_owned(), fps.to_string());
+                            status.set("Saved".to_owned());
+                        } else {
+                            status.set("Enter a bitrate from 10 to 100 and an FPS from 5 to 120.".to_owned());
+                        }
+                    }, {tr("Save")} }
+                }
+                if !status().is_empty() { p { role: "status", class: "col-span-2 text-xs text-rd-muted", {tr(&status())} } }
             }
         }
     }

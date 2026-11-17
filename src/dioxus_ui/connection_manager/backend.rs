@@ -105,7 +105,7 @@ pub(in crate::dioxus_ui) async fn close_manager(by_operator: bool) {
         ui_cm_interface::close(id);
     }
     hbb_common::tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-    let window = crate::dioxus_ui::native::window();
+    let window = dioxus::desktop::window();
     window.close();
 }
 

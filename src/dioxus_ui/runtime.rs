@@ -3,11 +3,11 @@ pub fn start(args: Vec<String>) {
     if args.first().map(String::as_str) == Some("--cm") {
         connection_manager::start_ipc();
     }
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     dioxus::LaunchBuilder::mobile()
         .with_context(args)
         .launch(Root);
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let title = if is_remote_window(&args) {
             format!("{} - RustDesk", args[1])
@@ -29,7 +29,7 @@ pub fn start(args: Vec<String>) {
             None
         };
         let _guard = runtime.as_ref().map(|runtime| runtime.enter());
-        super::native::launch(Root, args, title);
+        super::desktop::launch(Root, args, title);
     }
 }
 
@@ -88,13 +88,23 @@ pub(super) fn open_remote_window(
 
 #[component]
 fn Root() -> Element {
+    super::i18n::use_language();
     let args = use_context::<Vec<String>>();
+    let title = if is_remote_window(&args) {
+        format!("{} - RustDesk", args[1])
+    } else {
+        "RustDesk".to_owned()
+    };
     if args.first().map(String::as_str) == Some("--cm") {
         return rsx! {
+            document::Title { "{title}" }
+            document::Stylesheet { href: asset!("/assets/tailwind.css") }
             connection_manager::Window {}
         };
     }
     rsx! {
+        document::Title { "{title}" }
+        document::Stylesheet { href: asset!("/assets/tailwind.css") }
         super::app::App {}
         if cfg!(target_os = "android") {
             div { class: "fixed top-12 right-3 left-3 z-50 [&_.cm-panel]:max-h-[calc(100vh-64px)] [&_.cm-panel]:rounded-lg [&_.cm-panel]:border [&_.cm-panel]:border-[#48494e] [&_.cm-panel]:shadow-[0_8px_24px_#0008]", connection_manager::Panel {} }

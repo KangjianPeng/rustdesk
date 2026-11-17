@@ -22,7 +22,6 @@ pub(crate) fn Panel(#[props(default)] standalone: bool) -> Element {
         return rsx! {};
     }
     rsx! {
-        UiStyles {}
         details { class: "max-h-[calc(100vh-64px)] overflow-y-auto bg-rd-window p-5 text-[#eee] [&_summary]:mb-4 [&_summary]:cursor-pointer [&_summary]:text-xl [&_h2]:mb-4 [&_h2]:text-xl [&_h3]:m-0 [&_h3]:text-base [&_>summary]:mb-4", open: true,
             summary { "Incoming connections" }
             if snapshot.needs_deploy {
@@ -59,9 +58,4 @@ pub(crate) fn Panel(#[props(default)] standalone: bool) -> Element {
             }
         }
     }
-}
-
-#[component]
-fn UiStyles() -> Element {
-    rsx! { document::Stylesheet { href: asset!("/assets/tailwind.css") } }
 }

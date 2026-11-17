@@ -5,8 +5,6 @@ mod client_card;
 mod panel;
 mod window;
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(super) use backend::close_manager;
 #[cfg(target_os = "android")]
 pub(crate) use backend::set_needs_deploy;
 #[cfg(target_os = "android")]

@@ -156,9 +156,6 @@ pub fn core_main() -> Option<CoreMainAction> {
             log_name = name;
         }
     }
-    #[cfg(all(debug_assertions, feature = "dioxus-ui"))]
-    crate::dioxus_ui::logging::init_debug_log(&log_name);
-    #[cfg(not(all(debug_assertions, feature = "dioxus-ui")))]
     hbb_common::init_log(false, &log_name);
 
     #[cfg(windows)]

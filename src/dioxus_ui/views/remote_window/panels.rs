@@ -14,17 +14,24 @@ pub(super) fn ChatPanel(mut open: Signal<bool>) -> Element {
             open.set(true);
         }
     });
+    use_effect(move || {
+        let _ = received();
+        if open() {
+            document::eval("const messages = document.getElementById('remote-chat-messages'); if (messages) messages.scrollTop = messages.scrollHeight;");
+        }
+    });
     if !open() {
         return rsx! {};
     }
     rsx! {
-        section { class: "absolute top-20 right-4 z-20 flex max-h-[calc(100%-96px)] w-80 max-w-[calc(100%-32px)] flex-col overflow-hidden rounded border border-[#48494e] bg-rd-surface text-sm text-white shadow-lg", aria_label: "Chat",
+        section { class: "absolute top-20 right-4 z-20 flex h-96 max-h-[calc(100%-96px)] w-80 max-w-[calc(100%-32px)] flex-col overflow-hidden rounded-lg border bg-card text-sm text-card-foreground shadow-lg", aria_label: tr("Chat"),
+            onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); open.set(false); },
             header { class: "flex h-10 shrink-0 items-center justify-between border-b border-[#48494e] px-3",
-                span { "Chat" }
-                button { class: "flex size-6 items-center justify-center hover:bg-[#414348]", r#type: "button", title: "Close chat", aria_label: "Close chat", onclick: move |_| open.set(false), X { class: "size-4" } }
+                span { {tr("Chat")} }
+                Button { css_class: "size-7", button_type: "button", variant: ButtonVariant::Ghost, size: ButtonSize::IconSm, title: "Close chat", aria_label: "Close chat", onclick: move |_| open.set(false), X { class: "size-4" } }
             }
-            div { class: "flex min-h-20 flex-1 flex-col gap-2 overflow-auto p-3", role: "log", aria_live: "polite",
-                if status.remote.chat.is_empty() { p { class: "text-xs text-rd-muted", "No messages" } }
+            div { id: "remote-chat-messages", class: "flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain p-3", role: "log", aria_live: "polite", aria_relevant: "additions text",
+                if status.remote.chat.is_empty() { p { class: "text-xs text-rd-muted", {tr("No messages")} } }
                 for message in status.remote.chat.iter() {
                     p { class: if message.outgoing { "ml-6 self-end rounded bg-[#2864a8] px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]" } else { "mr-6 self-start rounded bg-[#383a40] px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]" }, "{message.text}" }
                 }
@@ -40,8 +47,9 @@ pub(super) fn ChatPanel(mut open: Signal<bool>) -> Element {
                         text.set(String::new());
                     }
                 },
-                input { class: "h-8 min-w-0 flex-1 rounded border border-[#55575b] bg-rd-content px-2 text-xs", r#type: "text", placeholder: "Write a message", aria_label: "Chat message", value: "{text}", oninput: move |event| text.set(event.value()) }
-                button { class: "h-8 rounded bg-[#0071ff] px-3 text-xs text-white disabled:opacity-40", r#type: "submit", disabled: text().trim().is_empty(), "Send" }
+                label { r#for: "remote-chat-message", class: "sr-only", {tr("Chat message")} }
+                Input { id: "remote-chat-message", css_class: "min-w-0 flex-1", placeholder: "Write a message", value: text(), oninput: move |event: FormEvent| text.set(event.value()) }
+                Button { button_type: "submit", disabled: text().trim().is_empty(), {tr("Send")} }
             }
         }
     }
@@ -81,11 +89,11 @@ fn QualityDetails(
         .bitrate
         .map_or_else(|| "—".to_owned(), |value| format!("{value} kb/s"));
     rsx! {
-        aside { class: "pointer-events-none absolute bottom-3 left-3 z-10 rounded bg-black/70 px-3 py-2 text-xs text-white", aria_label: "Quality monitor",
+        aside { class: "pointer-events-none absolute top-3 right-3 z-10 max-w-[calc(100%-24px)] rounded bg-black/70 px-3 py-2 text-xs leading-5 text-white [overflow-wrap:anywhere]", aria_label: tr("Quality monitor"),
             p { "{remote.connection}" }
             p { "{width} × {height} · {fps} FPS · {remote.codec} {remote.chroma}" }
-            p { "Speed: {remote.speed} · Delay: {delay}" }
-            p { "Target bitrate: {bitrate}" }
+            p { "{tr(\"Speed\")}: {remote.speed} · {tr(\"Delay\")}: {delay}" }
+            p { "{tr(\"Target bitrate\")}: {bitrate}" }
         }
     }
 }

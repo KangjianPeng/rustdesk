@@ -1,14 +1,13 @@
-//! Rust-native Dioxus frontend.
+//! Dioxus desktop and mobile frontend.
 
 mod app;
 mod chrome;
 mod common;
 mod components;
+mod i18n;
 pub(crate) mod connection_manager;
-#[cfg(all(debug_assertions, not(any(target_os = "android", target_os = "ios"))))]
-pub(crate) mod logging;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-mod native;
+mod desktop;
 mod peers;
 mod prelude;
 mod runtime;

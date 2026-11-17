@@ -40,7 +40,12 @@ RustDesk welcomes contribution from everyone. See [CONTRIBUTING.md](docs/CONTRIB
 
 The native desktop and Android UI is built with [Dioxus](https://dioxuslabs.com/). Reusable controls come from [rust-ui/ui](https://github.com/rust-ui/ui). The default Cargo features select the Dioxus frontend and choose the desktop or Android renderer for the target.
 
-Desktop uses the experimental Dioxus Native renderer (Blitz/Vello + wgpu), without WebKit. Linux needs a Vulkan-capable graphics driver, Fontconfig and dav1d >= 1.3 (`libfontconfig1-dev libdav1d-dev` on current Debian/Ubuntu). AV1 uses low latency dav1d decoding; other frontends retain their existing decoder.
+rust-ui uses Tailwind CSS. Run `npm ci` and `npm run build:css` after changing UI classes;
+use `npm run watch:css` alongside `dx serve` while developing. The build script resolves
+the pinned rust-ui sources through Cargo metadata so its default component classes are
+included in `assets/tailwind.css` as well as the application classes.
+
+Desktop uses Dioxus Desktop with the standard WebView renderer (WebKitGTK on Linux, WebView2 on Windows, and WKWebView on macOS). Linux requires `libwebkit2gtk-4.1-dev` and dav1d >= 1.3 (`libdav1d-dev`). AV1 uses low latency dav1d decoding; other frontends retain their existing decoder. On Linux, remote windows use a custom GTK GLArea/OpenGL video surface beneath the transparent WebView. Decoded pixels upload directly from Rust to a reusable GPU texture and return to the decoder buffer pool. Dioxus handles the toolbar, overlays, layout and input; no video pixels cross the WebKit bridge. Windows and macOS retain the binary custom protocol and WebGL canvas path.
 
 Default builds also include hardware codecs. On Linux, install the FFmpeg development packages (`libavcodec-dev libavformat-dev libavutil-dev`) and a VA-API or NVDEC driver for the GPU. Codec backends are detected before a remote session starts. Hardware decoding depends on the negotiated codec: an Intel UHD 630 supports H.264/H.265 through VA-API, while AV1 uses software decoding on that GPU.
 
@@ -51,7 +56,7 @@ Default builds also include hardware codecs. On Linux, install the FFmpeg develo
 - On Linux, default builds use system media libraries through `pkg-config`; vcpkg is not required.
   Install the development packages listed below before building. FFmpeg remains responsible for
   hardware codecs, libvpx/libaom for software video, libyuv for pixel conversion, and libopus for audio.
-  Dioxus Native removes the WebKit dependency; these media libraries still contain C/C++ code.
+  The WebView renderer also requires the platform WebView development libraries.
 
 - On Windows/macOS, install [vcpkg](https://github.com/microsoft/vcpkg) and set `VCPKG_ROOT`
   explicitly. Windows uses `libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static`;
@@ -59,7 +64,7 @@ Default builds also include hardware codecs. On Linux, install the FFmpeg develo
   Apple Silicon can use the existing Homebrew fallback for the software media libraries.
 
 - run `cargo run` to launch the default Dioxus UI
-- install the matching Dioxus CLI with `cargo install dioxus-cli --version 0.7.10 --locked`, then run `dx serve --renderer native` for desktop development
+- install the matching Dioxus CLI with `cargo install dioxus-cli --version 0.7.10 --locked`, then run `dx serve --renderer webview` for desktop development
 
 If `dx serve` fails to create its file watcher with `Too many open files`, check
 `cat /proc/sys/fs/inotify/max_user_instances`. Linux desktop applications and
@@ -72,7 +77,7 @@ sudo install -m 644 res/60-rustdesk-dev-inotify.conf /etc/sysctl.d/60-rustdesk-d
 sudo sysctl -p /etc/sysctl.d/60-rustdesk-dev-inotify.conf
 ```
 
-Then retry `dx serve --renderer native`. Dioxus CLI 0.7.10 creates a watcher even
+Then retry `dx serve --renderer webview`. Dioxus CLI 0.7.10 creates a watcher even
 with `--watch false`; that option does not bypass an exhausted instance limit.
 
 ## [Build](https://rustdesk.com/docs/en/dev/build/)
@@ -83,7 +88,7 @@ with `--watch false`; that option does not bypass an exhausted instance limit.
 
 ```sh
 sudo apt install -y build-essential git curl cmake pkg-config clang libclang-dev \
-        libgtk-3-dev libfontconfig1-dev libdav1d-dev libvpx-dev libyuv-dev libopus-dev libaom-dev \
+        libgtk-3-dev libwebkit2gtk-4.1-dev libdav1d-dev libvpx-dev libyuv-dev libopus-dev libaom-dev \
         libavcodec-dev libavformat-dev libavutil-dev libva-dev libvdpau-dev \
         libxcb-randr0-dev libxdo-dev libxfixes-dev libxcb-shape0-dev libxcb-xfixes0-dev \
         libasound2-dev libpulse-dev libssl-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev

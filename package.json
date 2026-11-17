@@ -1,9 +1,9 @@
 {
   "private": true,
   "scripts": {
-    "dev": "dx serve --renderer native",
-    "build:css": "tailwindcss -i ./input.css -o ./assets/tailwind.css",
-    "watch:css": "tailwindcss -i ./input.css -o ./assets/tailwind.css --watch"
+    "dev": "dx serve --renderer webview",
+    "build:css": "node tools/tailwind.mjs",
+    "watch:css": "node tools/tailwind.mjs --watch"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.1.17",

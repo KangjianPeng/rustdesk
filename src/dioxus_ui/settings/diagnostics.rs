@@ -24,9 +24,9 @@ pub(crate) fn CodecDiagnostics(state: SyncSignal<CodecUiState>) -> Element {
             .and_then(|value| value.get("hardware"))
             .and_then(serde_json::Value::as_bool)
             .map_or_else(
-                || "Unavailable".to_owned(),
+                || tr("Unavailable"),
                 |hardware| {
-                    let mode = if hardware { "Hardware" } else { "Software" };
+                    let mode = tr(if hardware { "Hardware" } else { "Software" });
                     let backend = entry
                         .and_then(|value| value.get("backend"))
                         .and_then(serde_json::Value::as_str)
@@ -58,17 +58,17 @@ pub(crate) fn CodecDiagnostics(state: SyncSignal<CodecUiState>) -> Element {
     rsx! {
         div { class: "mt-5 max-w-[650px] border-t border-[#3b3d41] pt-[15px] [&_p]:text-xs [&_p]:text-rd-muted",
             p { class: "mt-2 mb-0 [overflow-wrap:anywhere] text-center text-[11px] text-rd-muted",
-                if snapshot.loading { "Detecting codec backends..." }
-                else if detected { "Codec backends detected." }
-                else { "No hardware codec backend detected." }
+                if snapshot.loading { {tr("Detecting codec backends...")} }
+                else if detected { {tr("Codec backends detected.")} }
+                else { {tr("No hardware codec backend detected.")} }
             }
             div { class: "mt-[13px] grid grid-cols-2 gap-2 text-xs text-[#d4d5d7]",
-                div { class: "rounded border border-[#414348] bg-rd-panel p-2.5", "H264 encode: {path(\"encode\", \"H264\")}" }
-                div { class: "rounded border border-[#414348] bg-rd-panel p-2.5", "H264 decode: {path(\"decode\", \"H264\")}" }
-                div { class: "rounded border border-[#414348] bg-rd-panel p-2.5", "H265 encode: {path(\"encode\", \"H265\")}" }
-                div { class: "rounded border border-[#414348] bg-rd-panel p-2.5", "H265 decode: {path(\"decode\", \"H265\")}" }
+                div { class: "rounded border border-[#414348] bg-rd-panel p-2.5", "H264 {tr(\"encode\")}: {path(\"encode\", \"H264\")}" }
+                div { class: "rounded border border-[#414348] bg-rd-panel p-2.5", "H264 {tr(\"decode\")}: {path(\"decode\", \"H264\")}" }
+                div { class: "rounded border border-[#414348] bg-rd-panel p-2.5", "H265 {tr(\"encode\")}: {path(\"encode\", \"H265\")}" }
+                div { class: "rounded border border-[#414348] bg-rd-panel p-2.5", "H265 {tr(\"decode\")}: {path(\"decode\", \"H265\")}" }
             }
-            p { class: "mt-2 mb-0 [overflow-wrap:anywhere] text-center text-[11px] text-rd-muted", "Hardware acceleration: {acceleration_status} · Performance test: {benchmark_status}" }
+            p { class: "mt-2 mb-0 [overflow-wrap:anywhere] text-center text-[11px] text-rd-muted", "{tr(\"Hardware acceleration\")}: {tr(acceleration_status)} · {tr(\"Performance test\")}: {tr(benchmark_status)}" }
             if let Some(error) = diagnostics.get("error").and_then(serde_json::Value::as_str) {
                 p { class: "mt-2 [overflow-wrap:anywhere] !text-[#ee8c94]", "{error}" }
             }
@@ -79,9 +79,9 @@ pub(crate) fn CodecDiagnostics(state: SyncSignal<CodecUiState>) -> Element {
                     }
                 }
             }
-            p { class: "mt-2 [overflow-wrap:anywhere]", "Software codecs: {software_codecs}" }
+            p { class: "mt-2 [overflow-wrap:anywhere]", "{tr(\"Software codecs\")}: {software_codecs}" }
             if snapshot.benchmark.len() > 0 && !snapshot.benchmark.contains("\"ok\":true") {
-                p { class: "!text-[#ee8c94]", "Codec benchmark did not complete successfully." }
+                p { class: "!text-[#ee8c94]", {tr("Codec benchmark did not complete successfully.")} }
             }
         }
     }

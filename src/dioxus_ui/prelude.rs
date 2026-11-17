@@ -1,10 +1,5 @@
 //! Shared imports for Dioxus UI modules.
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(super) use super::native::select::{
-    Select as RustUiSelect, SelectContent as RustUiSelectContent, SelectGroup, SelectOption,
-    SelectTrigger as RustUiSelectTrigger, SelectValue,
-};
 pub(super) use crate::{
     client::QualityStatus,
     ui_session_interface::{InvokeUiSession, Session},
@@ -22,7 +17,6 @@ pub(super) use icons::{
     List, Minus, Monitor, Network, Printer, Radar, RefreshCw, Rows3, Search, Settings, Shield,
     Square, Star, StarOff, User, Users, X,
 };
-#[cfg(any(target_os = "android", target_os = "ios"))]
 pub(super) use registry::ui::select::{
     Select as RustUiSelect, SelectContent as RustUiSelectContent, SelectGroup, SelectOption,
     SelectTrigger as RustUiSelectTrigger, SelectValue,
@@ -35,9 +29,9 @@ pub(super) use registry::ui::{
 };
 pub(super) use scrap::ImageFormat;
 #[cfg(any(target_os = "android", target_os = "ios"))]
-pub(super) use std::sync::Condvar;
+pub(super) use std::sync::{Condvar, Weak};
 pub(super) use std::{
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -52,6 +46,7 @@ pub(super) use super::{
         SelectContent, SelectTrigger, UiIcon, UiIconName,
     },
     connection_manager,
+    i18n::tr,
     peers::{
         format_remote_id, load_peer_cards, local_ui_option, normalize_peer_sort,
         normalize_remote_id, option, peer_display_name, peer_platform_asset, peer_subtitle,

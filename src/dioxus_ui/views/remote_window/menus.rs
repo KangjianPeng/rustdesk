@@ -10,12 +10,13 @@ pub(super) fn MenuItem(
     #[props(optional)] checked: Option<bool>,
     #[props(default)] disabled: bool,
     #[props(default)] keep_open: bool,
+    #[props(default)] radio: bool,
     onclick: EventHandler<dioxus::prelude::MouseEvent>,
 ) -> Element {
     let toolbar = use_context::<ToolbarState>();
     rsx! {
         button {
-            class: ITEM, r#type: "button", role: if checked.is_some() { "menuitemcheckbox" } else { "menuitem" },
+            class: ITEM, r#type: "button", role: if radio { "menuitemradio" } else if checked.is_some() { "menuitemcheckbox" } else { "menuitem" },
             aria_checked: checked.map(|value| value.to_string()), disabled,
             onclick: move |event| {
                 onclick.call(event);
@@ -23,7 +24,7 @@ pub(super) fn MenuItem(
                 if !keep_open { toolbar.dismiss(); }
             },
             span { class: "flex h-4 w-4 shrink-0 items-center justify-center", if checked == Some(true) { Check {} } }
-            span { class: "min-w-0 flex-1", "{label}" }
+            span { class: "min-w-0 flex-1", {tr(&label)} }
         }
     }
 }
@@ -43,7 +44,7 @@ fn Submenu(name: &'static str, label: &'static str) -> Element {
                 toolbar.submenu.set(next);
             },
             span { class: "h-4 w-4 shrink-0" }
-            span { class: "min-w-0 flex-1", "{label}" }
+            span { class: "min-w-0 flex-1", {tr(label)} }
             ChevronRight {}
         }
     }
@@ -73,7 +74,7 @@ pub(super) fn MonitorMenu() -> Element {
     rsx! {
         for (index, display) in status.displays.iter().enumerate() {
             MenuItem { label: format!("{} · {} × {}", index + 1, display.width, display.height),
-                checked: status.current_display == index as i32, disabled: !display.online,
+                checked: status.current_display == index as i32, radio: true, disabled: !display.online,
                 onclick: move |_| if let Some(active) = state.session.peek().as_ref() { active.switch_display(index as i32); }
             }
         }
@@ -120,7 +121,7 @@ pub(super) fn ControlMenu() -> Element {
 pub(super) fn DisplayMenu(
     mut fullscreen: Signal<bool>,
     mut view_style: Signal<String>,
-    custom_scale: Signal<u16>,
+    mut custom_scale: Signal<u16>,
 ) -> Element {
     let state = use_context::<super::super::super::state::AppState>();
     let session = state.session;
@@ -138,23 +139,39 @@ pub(super) fn DisplayMenu(
         MenuItem { label: if fullscreen() { "Exit Fullscreen" } else { "Fullscreen" },
             onclick: move |_| {
                 let next = !fullscreen();
-                crate::dioxus_ui::native::window().set_fullscreen(next);
+                dioxus::desktop::window().set_fullscreen(next);
                 fullscreen.set(next);
             }
         }
         Divider {}
         for (value, label) in [("original", "Scale original"), ("adaptive", "Scale adaptive"), ("custom", "Scale custom")] {
-            MenuItem { label, checked: view_style() == value, keep_open: value == "custom",
+            MenuItem { label, checked: view_style() == value, radio: true, keep_open: value == "custom",
                 onclick: move |_| {
                     view_style.set(value.to_owned());
                     if let Some(active) = session.peek().as_ref() { active.save_view_style(value.to_owned()); }
                 }
             }
         }
-        if view_style() == "custom" { ScaleControls { value: custom_scale } }
+        if view_style() == "custom" {
+            ScaleControls {
+                value: custom_scale(),
+                maximum: 1000,
+                onchange: move |percent| {
+                    custom_scale.set(percent);
+                    if let Some(active) = session.peek().as_ref() {
+                        let mut config = active.load_config();
+                        config.ui_flutter.insert("custom_scale_percent".to_owned(), percent.to_string());
+                        active.save_config(config);
+                    }
+                }
+            }
+        }
         Divider {}
         Submenu { name: "quality", label: "Image Quality" }
         Submenu { name: "codec", label: "Codec" }
+        if !camera && keyboard && status.current_display >= 0 && status.remote.resolutions.len() > 1 && status.displays.get(status.current_display as usize).is_some() {
+            Submenu { name: "resolution", label: "Resolution" }
+        }
         Divider {}
         Toggle { label: "Show quality monitor", option: "show-quality-monitor" }
         if !camera {
@@ -168,26 +185,28 @@ pub(super) fn DisplayMenu(
 }
 
 #[component]
-fn ScaleControls(mut value: Signal<u16>) -> Element {
-    let state = use_context::<super::super::super::state::AppState>();
-    let status = state.ui_state.read();
-    let maximum = super::maximum_scale(
-        status.width,
-        status.height,
-        crate::dioxus_ui::native::window().scale_factor(),
-    );
+fn ScaleControls(value: u16, maximum: u16, onchange: EventHandler<u16>) -> Element {
+    let out_class = if value <= 5 { "text-rd-muted" } else { "text-[#ececec] hover:bg-[#3b5d91]" };
+    let in_class = if value >= maximum { "text-rd-muted" } else { "text-[#ececec] hover:bg-[#3b5d91]" };
+    let reset_class = if maximum < 100 || value == 100 { "text-rd-muted" } else { "text-[#ececec] hover:bg-[#3b5d91]" };
     rsx! {
-        label { class: "mx-3 my-2 flex items-center gap-2 text-xs", "Scale (%)",
-            input { class: "h-7 w-20 rounded border border-[#55575b] bg-rd-content px-2", r#type: "number", min: "5", max: "{maximum}", step: "5", value: "{value}",
+        div { class: "mx-3 my-2 grid grid-cols-[28px_minmax(0,1fr)_auto_28px_auto] items-center gap-1.5 text-xs", role: "group", aria_label: tr("Scale (%)"),
+            button { class: "box-border flex size-7 items-center justify-center rounded border border-[#55575b] bg-rd-content p-0 {out_class}", r#type: "button", title: tr("Zoom out"), aria_label: tr("Zoom out"), disabled: value <= 5,
+                onclick: move |_| onchange.call(value.saturating_sub(5).clamp(5, maximum)),
+                Minus { class: "size-3.5" }
+            }
+            input { class: "box-border h-7 min-w-0 w-full rounded border border-[#55575b] bg-rd-content px-1 text-center text-[#ececec]", r#type: "number", aria_label: tr("Scale (%)"), min: "5", max: "{maximum}", step: "5", value: "{value}",
                 onchange: move |event| if let Ok(percent) = event.value().parse::<u16>() {
-                    let percent = percent.clamp(5, maximum);
-                    value.set(percent);
-                    if let Some(active) = state.session.peek().as_ref() {
-                        let mut config = active.load_config();
-                        config.ui_flutter.insert("custom_scale_percent".to_owned(), percent.to_string());
-                        active.save_config(config);
-                    }
+                    onchange.call(percent.clamp(5, maximum));
                 }
+            }
+            span { "%" }
+            button { class: "box-border flex size-7 items-center justify-center rounded border border-[#55575b] bg-rd-content p-0 {in_class}", r#type: "button", title: tr("Zoom in"), aria_label: tr("Zoom in"), disabled: value >= maximum,
+                onclick: move |_| onchange.call(value.saturating_add(5).clamp(5, maximum)),
+                icons::Plus { class: "size-3.5" }
+            }
+            button { class: "box-border h-7 rounded border border-[#55575b] bg-rd-content px-2 {reset_class}", r#type: "button", title: tr("Reset zoom"), aria_label: tr("Reset zoom"), disabled: maximum < 100 || value == 100,
+                onclick: move |_| onchange.call(100.min(maximum)), "100%"
             }
         }
     }
@@ -199,42 +218,66 @@ pub(super) fn DisplaySubmenu(name: &'static str) -> Element {
     let session = state.session;
     let toolbar = use_context::<ToolbarState>();
     let _ = (toolbar.revision)();
-    let quality = session
-        .peek()
-        .as_ref()
-        .map(|active| active.get_image_quality())
-        .unwrap_or_default();
-    let codec = session
-        .peek()
-        .as_ref()
-        .map(|active| active.get_option(OPTION_CODEC_PREFERENCE.to_owned()))
-        .unwrap_or_default();
-    let codecs = session
-        .peek()
-        .as_ref()
-        .map(|active| active.alternative_codecs())
-        .unwrap_or_default();
-    rsx! {
-        if name == "quality" {
-            for (value, label) in [("best", "Good image quality"), ("balanced", "Balanced"), ("low", "Optimize reaction time"), ("custom", "Custom")] {
-                MenuItem { label, checked: quality == value || (quality.is_empty() && value == "balanced"), onclick: move |_| if let Some(active) = session.peek().as_ref() {
-                        active.save_image_quality(value.to_owned());
-                        if value == "custom" { let mut open = toolbar.quality_dialog; open.set(true); }
-                    }
-                }
-            }
-        } else if name == "codec" {
-            for (value, label, enabled) in [("auto", "Auto", true), ("vp8", "VP8", codecs.0), ("vp9", "VP9", true), ("av1", "AV1", codecs.1), ("h264", "H264", codecs.2), ("h265", "H265", codecs.3)] {
-                if enabled {
-                    MenuItem { label, checked: codec == value || (codec.is_empty() && value == "auto"),
-                        onclick: move |_| if let Some(active) = session.peek().as_ref() {
-                            active.set_option(OPTION_CODEC_PREFERENCE.to_owned(), value.to_owned());
-                            active.update_supported_decodings();
+    match name {
+        "quality" => {
+            let quality = session
+                .peek()
+                .as_ref()
+                .map(|active| active.get_image_quality())
+                .unwrap_or_default();
+            rsx! {
+                for (value, label) in [("best", "Good image quality"), ("balanced", "Balanced"), ("low", "Optimize reaction time"), ("custom", "Custom")] {
+                    MenuItem { label, radio: true, checked: quality == value || (quality.is_empty() && value == "balanced"), onclick: move |_| if let Some(active) = session.peek().as_ref() {
+                            if value == "custom" { let mut open = toolbar.quality_dialog; open.set(true); }
+                            else { active.save_image_quality(value.to_owned()); }
                         }
                     }
                 }
             }
         }
+        "codec" => {
+            let codec = session
+                .peek()
+                .as_ref()
+                .map(|active| active.get_option(OPTION_CODEC_PREFERENCE.to_owned()))
+                .unwrap_or_default();
+            let codecs = session
+                .peek()
+                .as_ref()
+                .map(|active| active.alternative_codecs())
+                .unwrap_or_default();
+            rsx! {
+                for (value, label, enabled) in [("auto", "Auto", true), ("vp8", "VP8", codecs.0), ("vp9", "VP9", true), ("av1", "AV1", codecs.1), ("h264", "H264", codecs.2), ("h265", "H265", codecs.3)] {
+                    if enabled {
+                        MenuItem { label, radio: true, checked: codec == value || (codec.is_empty() && value == "auto"),
+                            onclick: move |_| if let Some(active) = session.peek().as_ref() {
+                                active.set_option(OPTION_CODEC_PREFERENCE.to_owned(), value.to_owned());
+                                active.update_supported_decodings();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "resolution" => {
+            let status = state.ui_state.read();
+            rsx! {
+                if let Some(display) = usize::try_from(status.current_display).ok().and_then(|index| status.displays.get(index)) {
+                    super::resolutions::ResolutionMenu {
+                        display: display.clone(), resolutions: status.remote.resolutions.clone(),
+                        local_resolution: crate::dioxus_ui::desktop::monitor_size(),
+                        disabled: status.remote.permissions.get("keyboard") == Some(&false) || session.peek().as_ref().is_none_or(|active| active.get_toggle_option("view-only".to_owned())),
+                        onchange: move |(width, height)| if let Some(active) = session.peek().as_ref() {
+                            let status = state.ui_state.peek();
+                            if status.current_display >= 0 && status.remote.permissions.get("keyboard") != Some(&false) && !active.get_toggle_option("view-only".to_owned()) {
+                                active.change_resolution(status.current_display, width, height);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => rsx! {},
     }
 }
 
@@ -248,41 +291,76 @@ pub(super) fn CustomQuality(mut open: Signal<bool>) -> Element {
             .as_ref()
             .and_then(|active| active.get_custom_image_quality().first().copied())
             .unwrap_or(50)
+            .to_string()
     });
     let mut fps = use_signal(|| {
         state
             .session
             .peek()
             .as_ref()
-            .and_then(|active| *active.lc.read().unwrap().custom_fps.lock().unwrap())
-            .unwrap_or(30) as i32
+            .and_then(|active| {
+                active
+                    .get_option(OPTION_CUSTOM_FPS.to_owned())
+                    .parse::<i32>()
+                    .ok()
+            })
+            .unwrap_or(30)
+            .to_string()
     });
+    let mut error = use_signal(String::new);
+    let mut save = move || {
+        let values = quality()
+            .trim()
+            .parse::<i32>()
+            .ok()
+            .zip(fps().trim().parse::<i32>().ok());
+        let Some((quality, fps)) =
+            values.filter(|(quality, fps)| (1..=100).contains(quality) && (5..=120).contains(fps))
+        else {
+            error.set("Enter a bitrate between 1 and 100 and an FPS between 5 and 120.".to_owned());
+            return;
+        };
+        let active = state.session.peek();
+        let Some(active) = active.as_ref() else {
+            error.set("The remote session is no longer available.".to_owned());
+            return;
+        };
+        active.save_custom_image_quality(quality);
+        active.set_custom_fps(fps);
+        document::eval("document.getElementById('remote-quality-dialog')?.close();");
+    };
     rsx! {
-        div { class: "absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4", role: "dialog", aria_modal: "true", aria_label: "Custom Image Quality",
-            div { class: "w-full max-w-[420px] rounded-lg border border-[#48494e] bg-rd-surface p-6 text-white shadow-xl",
-                h2 { class: "mb-4 text-lg font-medium", "Custom Image Quality" }
-                for (label, value, max) in [("Bitrate", quality(), 100), ("FPS", fps(), 120)] {
-                    label { class: "mx-3 my-2 flex items-center justify-between gap-2 text-xs", "{label}",
-                        input { class: "h-7 w-20 rounded border border-[#55575b] bg-rd-content px-2", r#type: "number", min: "1", max: "{max}", value: "{value}",
-                            onchange: move |event| if let Ok(value) = event.value().parse::<i32>() {
-                                let value = value.clamp(1, max);
-                                if let Some(active) = state.session.peek().as_ref() {
-                                    if label == "FPS" { fps.set(value); active.set_custom_fps(value); }
-                                    else { quality.set(value); active.save_custom_image_quality(value); }
-                                }
-                            }
-                        }
+        dialog {
+            id: "remote-quality-dialog",
+            class: "fixed inset-0 m-auto max-h-[calc(100vh-32px)] w-[420px] max-w-[calc(100vw-32px)] overflow-auto rounded-xl border bg-card p-6 text-sm text-card-foreground shadow-xl backdrop:bg-black/50",
+            aria_labelledby: "remote-quality-title",
+            onmounted: move |_| async move {
+                let eval = document::eval("const dialog = document.getElementById('remote-quality-dialog'); return await new Promise(resolve => { dialog.addEventListener('close', () => resolve(true), { once: true }); dialog.showModal(); });");
+                if let Err(error) = eval.join::<bool>().await {
+                    log::error!("Image quality dialog failed: {error}");
+                }
+                open.set(false);
+            },
+            form { class: "flex flex-col gap-5",
+                onsubmit: move |event| { event.prevent_default(); save(); },
+                h2 { id: "remote-quality-title", class: "text-lg leading-6 font-semibold", {tr("Custom Image Quality")} }
+                div { class: "grid grid-cols-[minmax(0,1fr)_104px] items-center gap-x-4 gap-y-3",
+                    label { r#for: "custom-quality-bitrate", {tr("Bitrate (%)")} }
+                    Input { id: "custom-quality-bitrate", r#type: InputType::Number, required: true, value: quality(),
+                        oninput: move |event: FormEvent| quality.set(event.value()),
+                    }
+                    label { r#for: "custom-quality-fps", "FPS" }
+                    Input { id: "custom-quality-fps", r#type: InputType::Number, required: true, value: fps(),
+                        oninput: move |event: FormEvent| fps.set(event.value()),
                     }
                 }
-                div { class: "mt-4 flex justify-end",
-                    button { class: "h-9 rounded bg-[#0071ff] px-4 text-sm text-white", r#type: "button",
-                        onclick: move |_| {
-                            if let Some(active) = state.session.peek().as_ref() {
-                                active.save_custom_image_quality(quality());
-                                active.set_custom_fps(fps());
-                            }
-                            open.set(false);
-                        }, "Close"
+                if !error().is_empty() { p { class: "text-xs text-destructive", role: "alert", {tr(&error())} } }
+                div { class: "flex justify-end gap-2",
+                    Button { button_type: "button", variant: ButtonVariant::Outline,
+                        onclick: move |_| { document::eval("document.getElementById('remote-quality-dialog')?.close();"); }, {tr("Cancel")}
+                    }
+                    Button { button_type: "submit",
+                        {tr("Save")}
                     }
                 }
             }

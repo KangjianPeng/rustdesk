@@ -24,7 +24,7 @@ path = "src/service.rs"
 use_samplerate = ["samplerate", "libsamplerate-sys"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
-dioxus-ui = ["dep:dioxus", "dep:registry", "dep:icons", "dep:blitz-shell", "dep:blitz-dom", "dep:blitz-traits", "dep:dioxus-asset-resolver", "dep:wgpu", "dep:webbrowser", "scrap/dav1d"]
+dioxus-ui = ["dep:dioxus", "dep:dioxus-i18n", "dep:registry", "dep:icons", "dep:webbrowser", "dep:glow", "scrap/dav1d"]
 default = ["use_dasp", "dioxus-ui", "hwcodec"]
 hwcodec = ["scrap/hwcodec", "dep:hwcodec"]
 vram = ["scrap/vram"]
@@ -69,6 +69,7 @@ bytes = { version = "1.4", features = ["serde"] }
 default-net = "0.14"
 registry = { git = "https://github.com/rust-ui/ui.git", rev = "4f5a516e76d75a15a587ab2169352cf34fd318d0", package = "registry", optional = true }
 icons = { version = "0.19.0", features = ["dioxus"], optional = true }
+dioxus-i18n = { version = "0.6.0", optional = true }
 errno = "0.3"
 rdev = { git = "https://github.com/rustdesk-org/rdev" }
 url = { version = "2.3", features = ["serde"] }
@@ -157,12 +158,7 @@ piet-coregraphics = "0.6"
 foreign-types = "0.3"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
-dioxus = { version = "0.7.10", default-features = false, features = ["macro", "html", "signals", "hooks", "launch", "native", "logger"], optional = true }
-blitz-shell = { version = "0.2.3", default-features = false, features = ["data-uri"], optional = true }
-blitz-dom = { version = "0.2.4", optional = true }
-blitz-traits = { version = "0.2", optional = true }
-dioxus-asset-resolver = { version = "0.7.10", features = ["native"], optional = true }
-wgpu = { version = "26", default-features = false, features = ["wgsl"], optional = true }
+dioxus = { version = "0.7.10", default-features = false, features = ["macro", "html", "signals", "hooks", "launch", "desktop", "logger"], optional = true }
 winit = "0.30"
 webbrowser = { version = "1", optional = true }
 tray-icon = { git = "https://github.com/tauri-apps/tray-icon", version = "0.21.3" }
@@ -192,6 +188,7 @@ dbus = "0.9"
 dbus-crossroads = "0.5"
 nix = { version = "0.29", features = ["term", "process"]}
 gtk = "0.18"
+glow = { version = "0.16", optional = true }
 termios = "0.3"
 terminfo = "0.8"
 wayland-client = "0.31"

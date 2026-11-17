@@ -1,8 +1,11 @@
 use super::super::super::prelude::*;
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(any(target_os = "android", target_os = "ios", target_os = "linux")))]
 #[path = "remote_canvas.rs"]
 mod remote_canvas;
+#[cfg(target_os = "linux")]
+#[path = "remote_surface.rs"]
+mod remote_surface;
 
 #[component]
 pub(in crate::dioxus_ui::views) fn RemoteDesktop(
@@ -23,14 +26,15 @@ pub(in crate::dioxus_ui::views) fn RemoteDesktop(
     let touch_cancel_state = status.clone();
     rsx! {
         div { class: "flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[#090a0b]",
+            class: if standalone { "absolute inset-0" } else { "" },
             if !standalone {
             header { class: "flex min-h-10 shrink-0 items-center gap-3 border-b border-[#303238] bg-rd-surface px-3 text-sm text-[#e8e9eb]",
-                span { class: "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap", if status.peer_name.is_empty() { "Remote desktop" } else { "{status.peer_name}" } }
+                span { class: "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap", if status.peer_name.is_empty() { {tr("Remote desktop")} } else { "{status.peer_name}" } }
                 if !status.message.is_empty() {
                     span { class: "hidden max-w-[35%] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-rd-muted min-[841px]:inline", "{status.message}" }
                 }
                 Button {
-                    css_class: "h-7 rounded-md bg-[#8e4650] px-3 text-xs text-white hover:bg-[#a95662] [&>button]:h-full [&>button]:w-full",
+                    css_class: "h-7 rounded-md bg-[#8e4650] px-3 text-xs text-white hover:bg-[#a95662]",
                     variant: ButtonVariant::Destructive,
                     size: ButtonSize::Sm,
                     onclick: move |_| {
@@ -46,7 +50,7 @@ pub(in crate::dioxus_ui::views) fn RemoteDesktop(
                             state.frame_data_uri = Arc::from("");
                         });
                     },
-                    "Disconnect"
+                    {tr("Disconnect")}
                 }
             }
             }
@@ -56,7 +60,7 @@ pub(in crate::dioxus_ui::views) fn RemoteDesktop(
                 } else if status.frame_data_uri.is_empty() {
                     div { class: "m-auto flex flex-col items-center gap-2 text-sm text-rd-muted",
                         span { class: "h-5 w-5 animate-spin rounded-full border-2 border-[#5d91e8] border-t-transparent" }
-                        span { "Connected, waiting for image..." }
+                        span { {tr("Connected, waiting for image...")} }
                     }
                 } else {
                     img {
@@ -137,7 +141,9 @@ pub(in crate::dioxus_ui::views) fn RemoteDesktop(
 }
 
 fn desktop_canvas(original: bool, scale: u16) -> Element {
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(target_os = "linux")]
+    return rsx! { remote_surface::RemoteSurface { original, scale } };
+    #[cfg(not(any(target_os = "android", target_os = "ios", target_os = "linux")))]
     return rsx! { remote_canvas::RemoteCanvas { original, scale } };
     #[cfg(any(target_os = "android", target_os = "ios"))]
     rsx! {}

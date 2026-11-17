@@ -1,11 +1,11 @@
 use super::super::prelude::*;
 
-pub(super) struct FramePacket {
-    pub(super) width: usize,
-    pub(super) height: usize,
-    pub(super) format: ImageFormat,
-    pub(super) align: usize,
-    pub(super) raw: Vec<u8>,
+pub(in crate::dioxus_ui) struct FramePacket {
+    pub(in crate::dioxus_ui) width: usize,
+    pub(in crate::dioxus_ui) height: usize,
+    pub(in crate::dioxus_ui) format: ImageFormat,
+    pub(in crate::dioxus_ui) align: usize,
+    pub(in crate::dioxus_ui) raw: Vec<u8>,
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -16,7 +16,6 @@ pub(super) struct FramePipeline {
     pub(super) wake: Condvar,
 }
 
-#[cfg(any(target_os = "android", target_os = "ios", test))]
 pub(crate) fn encode_frame(
     width: usize,
     height: usize,
@@ -129,137 +128,71 @@ pub(super) fn frame_worker(pipeline: Weak<FramePipeline>, state: SyncSignal<Diox
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-mod desktop {
-    use super::super::video::VideoTexture;
-    use super::*;
-    use dioxus::native::{CustomPaintCtx, CustomPaintSource, DeviceHandle, TextureHandle};
+#[derive(Default)]
+pub(super) struct FramePipeline {
+    pub(super) pending: Mutex<Option<FramePacket>>,
+    pub(super) recycled: Mutex<Vec<Vec<u8>>>,
+}
 
-    #[derive(Default)]
-    pub(in crate::dioxus_ui) struct FramePipeline {
-        pending: Mutex<Option<FramePacket>>,
-        pub(in crate::dioxus_ui) recycled: Mutex<Vec<Vec<u8>>>,
-    }
-    impl FramePipeline {
-        pub(in crate::dioxus_ui::session) fn submit(&self, packet: FramePacket) {
-            if let Some(previous) = self.pending.lock().unwrap().replace(packet) {
-                self.recycle(previous.raw);
-            }
-            crate::dioxus_ui::native::request_redraw();
-        }
-        fn recycle(&self, raw: Vec<u8>) {
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl FramePipeline {
+    pub(super) fn submit(&self, packet: FramePacket) {
+        if let Some(previous) = self.pending.lock().unwrap().replace(packet) {
             let mut recycled = self.recycled.lock().unwrap();
             if recycled.len() < 2 {
-                recycled.push(raw);
+                recycled.push(previous.raw);
             }
         }
     }
 
-    #[derive(Default)]
-    pub(in crate::dioxus_ui) struct NativeVideo {
-        frames: Arc<FramePipeline>,
-        texture: Option<VideoTexture>,
-    }
-    impl NativeVideo {
-        pub(in crate::dioxus_ui) fn new(frames: Arc<FramePipeline>) -> Self {
-            Self {
-                frames,
-                texture: None,
-            }
+    pub(super) fn recycle(&self, raw: Vec<u8>) {
+        let mut recycled = self.recycled.lock().unwrap();
+        if recycled.len() < 2 {
+            recycled.push(raw);
         }
     }
-    impl CustomPaintSource for NativeVideo {
-        fn resume(&mut self, device: &DeviceHandle) {
-            let info = device.adapter.get_info();
-            log::info!("Native video renderer: {} ({:?})", info.name, info.backend);
-            self.texture = Some(VideoTexture::new(device.clone()));
-        }
-        fn suspend(&mut self) {
-            self.texture = None;
-        }
-        fn render(
-            &mut self,
-            mut ctx: CustomPaintCtx<'_>,
-            width: u32,
-            height: u32,
-            scale: f64,
-        ) -> Option<TextureHandle> {
-            let texture = self.texture.as_mut()?;
-            let packet = self.frames.pending.lock().unwrap().take();
-            if let Some(packet) = packet {
-                if let Some((width, height, stride, _format)) = texture_layout(&packet) {
-                    texture.upload(width, height, stride, &packet.raw);
-                } else {
-                    hbb_common::throttled_log!(
-                        Duration::from_secs(30),
-                        warn,
-                        "Invalid native video frame"
-                    );
-                }
-                self.frames.recycle(packet.raw);
-            }
-            texture.render(&mut ctx, width, height, scale)
-        }
-    }
+}
 
-    fn texture_layout(packet: &FramePacket) -> Option<(u32, u32, u32, wgpu::TextureFormat)> {
-        let format = match packet.format {
-            ImageFormat::ARGB => return None,
-            ImageFormat::ABGR => wgpu::TextureFormat::Rgba8Unorm,
-            ImageFormat::Raw => return None,
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+impl FramePacket {
+    pub(in crate::dioxus_ui) fn stride(&self) -> Option<usize> {
+        let bytes_per_pixel = if matches!(self.format, ImageFormat::Raw) {
+            3
+        } else {
+            4
         };
-        let align = packet.align.max(1);
-        let stride = packet.width.checked_mul(4)?.checked_add(align - 1)? / align * align;
-        if packet.width == 0
-            || packet.height == 0
-            || packet.raw.len() < stride.checked_mul(packet.height)?
-        {
-            return None;
-        }
-        Some((
-            u32::try_from(packet.width).ok()?,
-            u32::try_from(packet.height).ok()?,
-            u32::try_from(stride).ok()?,
-            format,
-        ))
+        let align = self.align.max(1);
+        let stride = self
+            .width
+            .checked_mul(bytes_per_pixel)?
+            .checked_add(align - 1)?
+            / align
+            * align;
+        (self.width > 0 && self.height > 0 && self.raw.len() >= stride.checked_mul(self.height)?)
+            .then_some(stride)
     }
+}
 
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-        #[test]
-        fn native_texture_preserves_rgba_stride_and_rejects_truncated_pixels() {
-            let mut packet = FramePacket {
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn webview_receives_latest_frame_with_its_original_stride() {
+        let frames = FramePipeline::default();
+        for pixel in [1, 2, 3] {
+            frames.submit(FramePacket {
                 width: 1,
                 height: 2,
                 format: ImageFormat::ABGR,
                 align: 8,
-                raw: vec![0, 0, 255, 255, 9, 9, 9, 9, 0, 255, 0, 255, 9, 9, 9, 9],
-            };
-            assert_eq!(
-                texture_layout(&packet),
-                Some((1, 2, 8, wgpu::TextureFormat::Rgba8Unorm))
-            );
-            packet.raw.truncate(8);
-            assert!(texture_layout(&packet).is_none());
+                raw: vec![pixel; 16],
+            });
         }
-        #[test]
-        fn native_frame_queue_presents_latest_frame() {
-            let frames = FramePipeline::default();
-            for pixel in [1, 2, 3] {
-                frames.submit(FramePacket {
-                    width: 1,
-                    height: 1,
-                    format: ImageFormat::ARGB,
-                    align: 1,
-                    raw: vec![pixel; 4],
-                });
-            }
-            assert_eq!(
-                frames.pending.lock().unwrap().take().unwrap().raw,
-                vec![3; 4]
-            );
-        }
+        let mut packet = frames.pending.lock().unwrap().take().unwrap();
+        assert_eq!(packet.raw, vec![3; 16]);
+        assert_eq!(packet.stride(), Some(8));
+        packet.raw.truncate(8);
+        assert!(packet.stride().is_none());
     }
 }
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(super) use desktop::{FramePipeline, NativeVideo};
