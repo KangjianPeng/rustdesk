@@ -292,9 +292,58 @@ fn heartbeat_url() -> String {
     format!("{}/api/heartbeat", url)
 }
 
+const BLOCKED_CONFIG_OPTIONS: &[&str] = &[
+    // Server endpoints and trust.
+    keys::OPTION_CUSTOM_RENDEZVOUS_SERVER,
+    "rendezvous-servers",
+    keys::OPTION_API_SERVER,
+    keys::OPTION_RELAY_SERVER,
+    keys::OPTION_KEY,
+    keys::OPTION_ICE_SERVERS,
+    // Transport security.
+    keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK,
+    keys::OPTION_ALLOW_WEBSOCKET,
+    keys::OPTION_WEBSOCKET_PORT,
+    // Authentication and credentials.
+    "2fa",
+    "bot",
+    keys::OPTION_PRESET_ADDRESS_BOOK_PASSWORD,
+    keys::OPTION_ENABLE_TRUSTED_DEVICES,
+    keys::OPTION_TRUSTED_DEVICE_EXPIRATION,
+    // Deployment and address book metadata.
+    keys::OPTION_PRESET_ADDRESS_BOOK_NAME,
+    keys::OPTION_PRESET_ADDRESS_BOOK_TAG,
+    keys::OPTION_PRESET_ADDRESS_BOOK_ALIAS,
+    keys::OPTION_PRESET_ADDRESS_BOOK_NOTE,
+    keys::OPTION_PRESET_DEVICE_NAME,
+    keys::OPTION_PRESET_DEVICE_USERNAME,
+    keys::OPTION_PRESET_NOTE,
+    // Recording location and service state.
+    keys::OPTION_WINDOWS_SERVICE_VIDEO_SAVE_DIRECTORY,
+    "stop-service",
+    "reg_recovery",
+];
+
+fn filter_config_options(options: &mut HashMap<String, String>) {
+    let rejected: Vec<_> = BLOCKED_CONFIG_OPTIONS
+        .iter()
+        .copied()
+        .filter(|key| options.contains_key(*key))
+        .collect();
+    if !rejected.is_empty() {
+        hbb_common::throttled_log!(
+            crate::common::API_LOG_INTERVAL,
+            warn,
+            "Rejected heartbeat strategy options: {rejected:?}"
+        );
+    }
+    options.retain(|key, _| !BLOCKED_CONFIG_OPTIONS.contains(&key.as_str()));
+}
+
 async fn handle_config_options(
-    config_options: HashMap<String, String>,
+    mut config_options: HashMap<String, String>,
 ) -> hbb_common::ResultType<()> {
+    filter_config_options(&mut config_options);
     let mut options = Config::get_options();
     let default_settings = config::DEFAULT_SETTINGS.read().unwrap().clone();
     config_options

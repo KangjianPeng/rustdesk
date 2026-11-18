@@ -1936,10 +1936,21 @@ fn get_uninstall(kill_self: bool, uninstall_printer: bool) -> ResultType<String>
 pub fn uninstall_me(kill_self: bool) -> ResultType<()> {
     if is_self_service_running() {
         // This CLI entry is synchronous. Portable builds reuse the retained user configuration.
-        tokio::runtime::Builder::new_current_thread()
+        let result = tokio::runtime::Builder::new_current_thread()
             .enable_all()
-            .build()?
-            .block_on(crate::trusted_devices::config::refresh_from_server())?;
+            .build()
+            .map_err(hbb_common::anyhow::Error::from)
+            .and_then(|runtime| {
+                runtime.block_on(crate::trusted_devices::config::refresh_from_server())
+            });
+        if let Err(error) = result {
+            log::warn!(
+                "Failed to synchronize configuration before uninstall; revoking local trusted devices before continuing: {error:#}"
+            );
+            if let Err(error) = crate::trusted_devices::clear() {
+                log::warn!("Failed to revoke local trust; continuing removal: {error:#}");
+            }
+        }
     }
     run_cmds(get_uninstall(kill_self, true)?, true, "uninstall")
 }
@@ -3377,8 +3388,12 @@ pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
                 runtime.block_on(crate::trusted_devices::config::refresh_from_server())
             });
         if let Err(error) = result {
-            log::error!("Cannot stop service before synchronizing its configuration: {error}");
-            return true;
+            log::warn!(
+                "Failed to synchronize configuration before service removal; revoking local trusted devices before continuing: {error:#}"
+            );
+            if let Err(error) = crate::trusted_devices::clear() {
+                log::warn!("Failed to revoke local trust; continuing removal: {error:#}");
+            }
         }
     }
     let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
@@ -4419,7 +4434,7 @@ pub fn try_set_window_foreground(window: HWND) {
 }
 
 pub mod reg_display_settings {
-    use hbb_common::ResultType;
+    use hbb_common::{bail, ResultType};
     use serde_derive::{Deserialize, Serialize};
     use std::collections::HashMap;
     use winreg::{enums::*, RegValue};
@@ -4483,6 +4498,7 @@ pub mod reg_display_settings {
     }
 
     pub fn restore_reg_connectivity(reg_recovery: RegRecovery, force: bool) -> ResultType<()> {
+        connectivity_subkey(&reg_recovery)?;
         let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
         let reg_item = hklm.open_subkey_with_flags(&reg_recovery.path, KEY_READ | KEY_WRITE)?;
         if !force {
@@ -4522,6 +4538,60 @@ pub mod reg_display_settings {
             10 => RegType::REG_RESOURCE_REQUIREMENTS_LIST,
             11 => RegType::REG_QWORD,
             _ => RegType::REG_NONE,
+        }
+    }
+
+    fn connectivity_subkey(recovery: &RegRecovery) -> ResultType<&str> {
+        let prefix = format!("{}\\{}\\", REG_GRAPHICS_DRIVERS_PATH, REG_CONNECTIVITY_PATH);
+        let Some(subkey) = recovery.path.strip_prefix(&prefix) else {
+            bail!("Invalid display connectivity recovery target");
+        };
+        if recovery.key != "Recent"
+            || subkey.is_empty()
+            || matches!(subkey, "." | "..")
+            || subkey.chars().any(|c| matches!(c, '\\' | '/' | '\0'))
+        {
+            bail!("Invalid display connectivity recovery target");
+        }
+        Ok(subkey)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use winreg::types::ToRegValue;
+
+        #[test]
+        fn registry_recovery_rejects_external_targets_before_access() {
+            for force in [false, true] {
+                let recovery = RegRecovery {
+                    path: format!("SOFTWARE\\RustDesk\\{}", uuid::Uuid::new_v4()),
+                    key: "Recent".to_owned(),
+                    old: (vec![0x22; 4], RegType::REG_DWORD as isize),
+                    new: (vec![0x11; 4], RegType::REG_DWORD as isize),
+                };
+                let error = restore_reg_connectivity(recovery, force).unwrap_err();
+                assert_eq!(
+                    error.to_string(),
+                    "Invalid display connectivity recovery target"
+                );
+            }
+        }
+
+        #[test]
+        fn registry_recovery_accepts_display_changes() {
+            let connectivity = |value: &str| {
+                HashMap::from([(
+                    "monitor".to_owned(),
+                    HashMap::from([("Recent".to_owned(), value.to_reg_value())]),
+                )])
+            };
+            let recovery = diff_recent_connectivity(
+                connectivity("before"),
+                connectivity("after-layout-change"),
+            )
+            .unwrap();
+            assert_eq!(connectivity_subkey(&recovery).unwrap(), "monitor");
         }
     }
 }

@@ -819,10 +819,15 @@ impl Connection {
                         }
                         ipc::Data::SwitchPermission{name, enabled} => {
                             log::info!("Change permission {} -> {}", name, enabled);
+                            // Android broadcasts these to every connection; only remote sessions use them.
+                            if (&name == "keyboard" || &name == "clipboard") && !conn.is_remote() {
+                                continue;
+                            }
                             if &name == "keyboard" {
                                 conn.keyboard = enabled;
                                 conn.send_permission(Permission::Keyboard, enabled).await;
-                                if let Some(s) = conn.server.upgrade() {
+                                // Until authorized, only record the value; try_sub_monitor_services subscribes from it.
+                                if let Some(s) = conn.server.upgrade().filter(|_| conn.authorized) {
                                     s.write().unwrap().subscribe(
                                         super::clipboard_service::NAME,
                                         conn.inner.clone(), conn.can_sub_clipboard_service());
@@ -839,7 +844,7 @@ impl Connection {
                             } else if &name == "clipboard" {
                                 conn.clipboard = enabled;
                                 conn.send_permission(Permission::Clipboard, enabled).await;
-                                if let Some(s) = conn.server.upgrade() {
+                                if let Some(s) = conn.server.upgrade().filter(|_| conn.authorized) {
                                     s.write().unwrap().subscribe(
                                         super::clipboard_service::NAME,
                                         conn.inner.clone(), conn.can_sub_clipboard_service());
@@ -870,7 +875,7 @@ impl Connection {
                                     conn.try_empty_file_clipboard();
                                 }
                                 #[cfg(feature = "unix-file-copy-paste")]
-                                if let Some(s) = conn.server.upgrade() {
+                                if let Some(s) = conn.server.upgrade().filter(|_| conn.authorized) {
                                     s.write().unwrap().subscribe(
                                         super::clipboard_service::FILE_NAME,
                                         conn.inner.clone(),
@@ -1421,11 +1426,7 @@ impl Connection {
     }
 
     async fn check_whitelist(&mut self, addr: &SocketAddr) -> bool {
-        let whitelist: Vec<String> = Config::get_option("whitelist")
-            .split(",")
-            .filter(|x| !x.is_empty())
-            .map(|x| x.to_owned())
-            .collect();
+        let whitelist = ip_whitelist_entries(&Config::get_option("whitelist"));
         if !whitelist.is_empty()
             && whitelist
                 .iter()
@@ -3145,6 +3146,11 @@ impl Connection {
                     if self.is_authed_view_camera_conn() {
                         return true;
                     }
+                    #[cfg(target_os = "android")]
+                    if !self.peer_keyboard_enabled() {
+                        self.update_auto_disconnect_timer();
+                        return true;
+                    }
                     #[cfg(any(target_os = "android", target_os = "ios"))]
                     if let Err(e) = call_main_service_pointer_input("mouse", me.mask, me.x, me.y) {
                         log::debug!("call_main_service_pointer_input fail:{}", e);
@@ -3182,6 +3188,11 @@ impl Connection {
                 }
                 Some(message::Union::PointerDeviceEvent(pde)) => {
                     if self.is_authed_view_camera_conn() {
+                        return true;
+                    }
+                    #[cfg(target_os = "android")]
+                    if !self.peer_keyboard_enabled() {
+                        self.update_auto_disconnect_timer();
                         return true;
                     }
                     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -3224,6 +3235,9 @@ impl Connection {
                 #[cfg(any(target_os = "android"))]
                 Some(message::Union::KeyEvent(mut me)) => {
                     if self.is_authed_view_camera_conn() {
+                        return true;
+                    }
+                    if !self.peer_keyboard_enabled() {
                         return true;
                     }
                     let key = match me.mode.enum_value() {
@@ -5231,6 +5245,8 @@ impl Connection {
             && self.keyboard
             && !raii::AuthedConnID::session_reconnected(self.inner.id(), &self.session_key())
         {
+            #[cfg(target_os = "macos")]
+            privacy_mode::macos::turn_off_before_lock(self.inner.id());
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             lock_screen().await;
         }
@@ -7034,6 +7050,17 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
     pi == p.len()
 }
 
+// A space around an entry ("10.0.0.1, 10.0.0.2") is ignored: `IpCidr` rejects " 10.0.0.2", so
+// that address was blocked. Entries that are empty after the trim are dropped, so a
+// whitespace-only value turns the list off, as in `check_id_whitelist` and the dialogs.
+fn ip_whitelist_entries(option: &str) -> Vec<String> {
+    option
+        .split(',')
+        .map(|x| x.trim().to_owned())
+        .filter(|x| !x.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod test {
     #[allow(unused)]
@@ -7045,6 +7072,24 @@ mod test {
 
     fn unauthorized_count() -> usize {
         UNAUTHORIZED_CONNS.lock().unwrap().len()
+    }
+
+    #[test]
+    fn test_ip_whitelist_entries_ignore_spaces_around_them() {
+        let entries = ip_whitelist_entries("192.168.1.0/24, 10.0.0.1 ");
+        assert_eq!(entries, vec!["192.168.1.0/24", "10.0.0.1"]);
+        let ip: IpAddr = "10.0.0.1".parse().unwrap();
+        assert!(entries
+            .iter()
+            .any(|x| IpCidr::from_str(x).map_or(false, |y| y.contains(ip))));
+    }
+
+    #[test]
+    fn test_ip_whitelist_entries_whitespace_only_is_off() {
+        for option in ["", ",", " ", " , "] {
+            assert!(ip_whitelist_entries(option).is_empty(), "{option:?}");
+        }
+        assert_eq!(ip_whitelist_entries("10.0.0.1, "), vec!["10.0.0.1"]);
     }
 
     #[test]
