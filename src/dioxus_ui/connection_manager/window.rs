@@ -6,8 +6,8 @@ use super::panel::Panel;
 #[component]
 pub(crate) fn Window() -> Element {
     rsx! {
-        div { class: "flex h-screen min-h-[480px] w-full flex-col overflow-hidden bg-background",
-            header { class: "flex h-8 items-center border-b border-border bg-card px-[5px] select-none",
+        div { class: "flex h-screen w-full flex-col overflow-hidden bg-background",
+            header { class: "flex h-8 shrink-0 items-center border-b border-border bg-card px-[5px] select-none",
                 div { class: "flex h-8 min-w-0 flex-1 items-center cursor-grab", onmousedown: move |_| {
                     #[cfg(not(target_os = "android"))]
                     dioxus::desktop::window().drag();

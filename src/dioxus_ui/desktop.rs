@@ -14,15 +14,21 @@ pub(super) use native_video::{NativeVideoSurface, Viewport};
 pub(super) fn launch(app: fn() -> Element, args: Vec<String>, title: String) {
     #[cfg(target_os = "linux")]
     let remote = super::runtime::is_remote_window(&args);
+    let manager = args.first().is_some_and(|arg| arg == "--cm");
+    let window = WindowBuilder::new()
+        .with_title(title)
+        .with_decorations(false);
+    let window = if manager {
+        window
+            .with_inner_size(LogicalSize::new(360.0, 280.0))
+            .with_min_inner_size(LogicalSize::new(320.0, 220.0))
+    } else {
+        window.with_inner_size(LogicalSize::new(1280.0, 720.0))
+    };
     let dom = VirtualDom::new(app);
     dom.provide_root_context(args);
     let config = Config::new()
-        .with_window(
-            WindowBuilder::new()
-                .with_title(title)
-                .with_inner_size(LogicalSize::new(1280.0, 720.0))
-                .with_decorations(false),
-        )
+        .with_window(window)
         .with_custom_protocol("rustdesk", |_, request| serve_session(request));
     #[cfg(target_os = "linux")]
     // Dioxus's fallback mutates GDK_BACKEND after GTK starts; child windows then

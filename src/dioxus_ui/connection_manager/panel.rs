@@ -21,9 +21,19 @@ pub(crate) fn Panel(#[props(default)] standalone: bool) -> Element {
     if !standalone && snapshot.clients.is_empty() && !snapshot.needs_deploy {
         return rsx! {};
     }
+    let layout = if standalone {
+        "min-h-0 flex-1 p-3"
+    } else {
+        "max-h-[calc(100vh-64px)] p-5"
+    };
+    let heading = if standalone {
+        "text-base font-semibold"
+    } else {
+        "text-xl"
+    };
     rsx! {
-        details { class: "max-h-[calc(100vh-64px)] overflow-y-auto bg-background p-5 text-foreground [&_summary]:mb-4 [&_summary]:cursor-pointer [&_summary]:text-xl [&_h2]:mb-4 [&_h2]:text-xl [&_h3]:m-0 [&_h3]:text-base [&_>summary]:mb-4", open: true,
-            summary { "Incoming connections" }
+        details { class: "{layout} overflow-y-auto bg-background text-foreground [&_h2]:mb-4 [&_h2]:text-xl [&_h3]:m-0 [&_h3]:text-base", open: true,
+            summary { class: "mb-4 cursor-pointer {heading}", "Incoming connections" }
             if snapshot.needs_deploy {
                 p { "This device requires deployment before it can accept connections." }
                 form { class: "mt-3 flex gap-2 [&>.inline-flex:first-child]:min-w-0 [&>.inline-flex:first-child]:flex-1 [&_input]:rounded-[5px] [&_input]:border [&_input]:p-2 [&>.inline-flex:last-child]:min-h-9 [&>.inline-flex:last-child]:rounded-[5px] [&>.inline-flex:last-child]:border [&>.inline-flex:last-child>button]:min-h-9 [&>.inline-flex:last-child>button]:px-[14px] [&>.inline-flex:last-child>button]:py-2", onsubmit: move |event| {
