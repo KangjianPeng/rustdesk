@@ -1,4 +1,5 @@
 use super::super::prelude::*;
+#[cfg(not(target_os = "android"))]
 use super::backend::close_manager;
 use super::panel::Panel;
 

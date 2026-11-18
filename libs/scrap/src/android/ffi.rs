@@ -482,13 +482,30 @@ fn try_init_rustls_platform_verifier(env: &mut JNIEnv, context_jobject: *mut c_v
 }
 
 // https://cjycode.com/flutter_rust_bridge/guides/how-to/ndk-init
+#[cfg(not(feature = "dioxus-android"))]
 #[no_mangle]
 pub extern "C" fn JNI_OnLoad(vm: jni::JavaVM, res: *mut std::os::raw::c_void) -> jni::sys::jint {
-    if let Ok(env) = vm.get_env() {
+    if vm.get_env().is_ok() {
         let vm = vm.get_java_vm_pointer() as *mut std::os::raw::c_void;
         init_ndk_context(vm, res);
     }
     jni::JNIVersion::V6.into()
+}
+
+#[cfg(feature = "dioxus-android")]
+pub fn dioxus_app_files_dir() -> JniResult<String> {
+    // Tao owns the NDK context and initializes it before calling the Rust entry point.
+    let context = ndk_context::android_context();
+    let vm = unsafe { JavaVM::from_raw(context.vm().cast()) }?;
+    #[cfg(feature = "hwcodec")]
+    hwcodec::android::ffmpeg_set_java_vm(context.vm());
+    let mut env = vm.attach_current_thread()?;
+    env.with_local_frame(4, |env| {
+        let activity = unsafe { JObject::from_raw(context.context().cast()) };
+        let dir = env.call_method(activity, "getFilesDir", "()Ljava/io/File;", &[])?;
+        let path = env.call_method(dir.l()?, "getAbsolutePath", "()Ljava/lang/String;", &[])?;
+        Ok(env.get_string(&JString::from(path.l()?))?.into())
+    })
 }
 
 #[no_mangle]

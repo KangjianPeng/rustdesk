@@ -22,6 +22,7 @@ wayland = ["gstreamer", "gstreamer-app", "gstreamer-video", "dbus", "tracing", "
 # enable `scrap/wayland`, which is what hid this.
 drm = ["wayland", "base/wayland_probe"]
 mediacodec = ["ndk"]
+dioxus-android = []
 linux-pkg-config = ["dep:pkg-config"]
 hwcodec = ["dep:hwcodec"]
 dav1d = ["dep:dav1d"]

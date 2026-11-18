@@ -36,6 +36,15 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(all(feature = "dioxus-ui", target_os = "android"))]
 fn main() {
+    let files_dir = match scrap::android::dioxus_app_files_dir() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!("Failed to get the Android app storage directory: {error}");
+            return;
+        }
+    };
+    *hbb_common::config::APP_DIR.write().unwrap() = files_dir.clone();
+    *hbb_common::config::APP_HOME_DIR.write().unwrap() = files_dir;
     if !common::global_init() {
         eprintln!("Global initialization failed.");
         return;
