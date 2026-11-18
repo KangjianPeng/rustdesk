@@ -6,7 +6,7 @@ use std::{io, sync::RwLock, time::Duration};
 
 use super::x11::PixelBuffer;
 
-pub struct Capturer(Display, Box<dyn Recorder>, Vec<u8>);
+pub struct Capturer(Display, Box<dyn Recorder>);
 
 lazy_static::lazy_static! {
     static ref MAP_ERR: RwLock<Option<fn(err: String)-> io::Error>> = Default::default();
@@ -27,7 +27,7 @@ fn map_err<E: ToString>(err: E) -> io::Error {
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
         let r = display.0.recorder(false).map_err(map_err)?;
-        Ok(Capturer(display, r, Default::default()))
+        Ok(Capturer(display, r))
     }
 
     pub fn width(&self) -> usize {

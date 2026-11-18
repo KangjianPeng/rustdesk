@@ -638,6 +638,7 @@ pub struct HwCodecConfig {
 // HwCodecConfig2 is used to store the config in json format,
 // confy can't serde HwCodecConfig successfully if the non-first struct Vec is empty due to old toml version.
 // struct T { a: Vec<A>, b: Vec<String>} will fail if b is empty, but struct T { a: Vec<String>, b: Vec<String>} is ok.
+#[cfg(any(windows, target_os = "macos"))]
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 struct HwCodecConfig2 {
     #[serde(default)]

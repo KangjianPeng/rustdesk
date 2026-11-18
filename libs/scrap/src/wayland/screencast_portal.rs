@@ -23,7 +23,6 @@ pub trait OrgFreedesktopPortalScreenCast {
         session_handle: dbus::Path,
         options: arg::PropMap,
     ) -> Result<arg::OwnedFd, dbus::Error>;
-    fn available_source_types(&self) -> Result<u32, dbus::Error>;
     fn available_cursor_modes(&self) -> Result<u32, dbus::Error>;
     fn version(&self) -> Result<u32, dbus::Error>;
 }
@@ -78,14 +77,6 @@ impl<'a, T: blocking::BlockingSender, C: ::std::ops::Deref<Target = T>>
             (session_handle, options),
         )
         .map(|r: (arg::OwnedFd,)| r.0)
-    }
-
-    fn available_source_types(&self) -> Result<u32, dbus::Error> {
-        <Self as blocking::stdintf::org_freedesktop_dbus::Properties>::get(
-            &self,
-            "org.freedesktop.portal.ScreenCast",
-            "AvailableSourceTypes",
-        )
     }
 
     fn available_cursor_modes(&self) -> Result<u32, dbus::Error> {

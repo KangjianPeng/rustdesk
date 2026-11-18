@@ -24,7 +24,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use base::platform::linux::{WaylandDisplayInfo, CMD_SH};
-use hbb_common::{anyhow::anyhow, bail, config, serde_json, tokio, ResultType};
+use hbb_common::{anyhow::anyhow, bail, config, serde_json, ResultType};
 
 use super::capturable::PixelProvider;
 use super::capturable::{Capturable, Recorder};
@@ -669,7 +669,7 @@ fn get_request_path(
     .map_err(|_| dbus::Error::new_failed("Failed to construct portal request path"))
 }
 
-pub fn get_portal(conn: &SyncConnection) -> Proxy<&SyncConnection> {
+pub fn get_portal(conn: &SyncConnection) -> Proxy<'_, &SyncConnection> {
     conn.with_proxy(
         "org.freedesktop.portal.Desktop",
         "/org/freedesktop/portal/desktop",
