@@ -227,5 +227,4 @@ mod tests {
 
         std::fs::remove_dir_all(test_dir).unwrap();
     }
-
 }

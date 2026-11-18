@@ -189,9 +189,14 @@ mod cursor_pos_tests {
         let visible = snapshot(7);
         let hidden = snapshot(scrap::drm_reader::HIDDEN_CURSOR_ID);
 
-        let mut frame = DrmProducerMsg::Frame { desc: desc(), fd: None };
+        let mut frame = DrmProducerMsg::Frame {
+            desc: desc(),
+            fd: None,
+        };
         stamp_cursor_pos(&mut frame, Some(&visible));
-        assert!(matches!(&frame, DrmProducerMsg::Frame { desc, .. } if desc.cursor_pos == Some((10, 20))));
+        assert!(
+            matches!(&frame, DrmProducerMsg::Frame { desc, .. } if desc.cursor_pos == Some((10, 20)))
+        );
         stamp_cursor_pos(&mut frame, Some(&hidden));
         assert!(matches!(&frame, DrmProducerMsg::Frame { desc, .. } if desc.cursor_pos.is_none()));
 
@@ -203,9 +208,21 @@ mod cursor_pos_tests {
             cursor_pos: None,
         };
         stamp_cursor_pos(&mut cpu, Some(&visible));
-        assert!(matches!(&cpu, DrmProducerMsg::FrameCpu { cursor_pos: Some((10, 20)), .. }));
+        assert!(matches!(
+            &cpu,
+            DrmProducerMsg::FrameCpu {
+                cursor_pos: Some((10, 20)),
+                ..
+            }
+        ));
         stamp_cursor_pos(&mut cpu, None);
-        assert!(matches!(&cpu, DrmProducerMsg::FrameCpu { cursor_pos: None, .. }));
+        assert!(matches!(
+            &cpu,
+            DrmProducerMsg::FrameCpu {
+                cursor_pos: None,
+                ..
+            }
+        ));
 
         let mut shape = DrmProducerMsg::Cursor {
             id: 7,
@@ -217,7 +234,14 @@ mod cursor_pos_tests {
             colors: vec![0; 16],
         };
         stamp_cursor_pos(&mut shape, Some(&visible));
-        assert!(matches!(&shape, DrmProducerMsg::Cursor { hotx: 1, hoty: 1, .. }));
+        assert!(matches!(
+            &shape,
+            DrmProducerMsg::Cursor {
+                hotx: 1,
+                hoty: 1,
+                ..
+            }
+        ));
     }
 }
 
@@ -333,7 +357,11 @@ fn drm_enumerate_all_displays() -> (Vec<DrmDisplayInfo>, Vec<String>) {
                         "{} ({}, render {})",
                         d.path,
                         d.display_count,
-                        if d.render_node.is_empty() { "none" } else { &d.render_node }
+                        if d.render_node.is_empty() {
+                            "none"
+                        } else {
+                            &d.render_node
+                        }
                     ))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -369,9 +397,9 @@ fn drm_enumerate_all_displays() -> (Vec<DrmDisplayInfo>, Vec<String>) {
         Ok(rd) => rd
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| {
-                p.file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with("card") && n[4..].chars().all(|c| c.is_ascii_digit()))
+                p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                    n.starts_with("card") && n[4..].chars().all(|c| c.is_ascii_digit())
+                })
             })
             .collect(),
         Err(err) => {
@@ -436,7 +464,8 @@ fn drm_wakeable_undriven(displays: &[DrmDisplayInfo], undriven: &[String]) -> Ve
 #[cfg(feature = "drm-wake")]
 static DRM_LAST_WAKE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 #[cfg(feature = "drm-wake")]
-static DRM_WAKE_UNAVAILABLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static DRM_WAKE_UNAVAILABLE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Wake config key; `enable-` is load-bearing: an absent value reads as `!= "N"`, so it defaults ON.
 #[cfg(feature = "drm-wake")]
@@ -455,7 +484,10 @@ const DRM_WAKE_SETTLE_WINDOW: std::time::Duration = std::time::Duration::from_se
 #[cfg(feature = "drm-wake")]
 fn drm_wake_clock_secs() -> u64 {
     static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    START.get_or_init(std::time::Instant::now).elapsed().as_secs()
+    START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_secs()
 }
 
 /// Look like user activity so the compositor re-enables an idle-DISABLED connector (until it does,
@@ -493,7 +525,10 @@ fn drm_wake_displays(reason: &str) -> bool {
     let mut keys = evdev::AttributeSet::<evdev::Key>::new();
     keys.insert(evdev::Key::BTN_LEFT);
     let built = evdev::uinput::VirtualDeviceBuilder::new()
-        .and_then(|b| b.name("RustDesk DRM display wake").with_relative_axes(&axes))
+        .and_then(|b| {
+            b.name("RustDesk DRM display wake")
+                .with_relative_axes(&axes)
+        })
         .and_then(|b| b.with_keys(&keys))
         .and_then(|b| b.build());
     let mut dev = match built {
@@ -620,8 +655,16 @@ fn drm_enumerate_settled(reason: &str) -> Vec<DrmDisplayInfo> {
             "drm: the wake did not bring back {list}; not asking again for {these} until {it_is} \
              seen scanning out",
             list = cur_wakeable.join(", "),
-            these = if cur_wakeable.len() == 1 { "it" } else { "them" },
-            it_is = if cur_wakeable.len() == 1 { "it is" } else { "they are" },
+            these = if cur_wakeable.len() == 1 {
+                "it"
+            } else {
+                "them"
+            },
+            it_is = if cur_wakeable.len() == 1 {
+                "it is"
+            } else {
+                "they are"
+            },
         );
     }
     cur
@@ -984,7 +1027,8 @@ async fn handle_drm_conn(stream: Connection) -> ResultType<()> {
             return Ok(());
         }
     };
-    conn.send_msg(&Data::DrmDisplayList(displays.clone()), None).await?;
+    conn.send_msg(&Data::DrmDisplayList(displays.clone()), None)
+        .await?;
 
     let (display_idx, need_cpu) = match conn.recv_msg_timeout2(10_000).await {
         Some(Ok((Data::DrmStart { display, need_cpu }, _fd))) => (display, need_cpu),
@@ -1007,7 +1051,10 @@ async fn handle_drm_conn(stream: Connection) -> ResultType<()> {
         );
         return Ok(());
     }
-    if crtc_tx.send((target_device, target_crtc, need_cpu)).is_err() {
+    if crtc_tx
+        .send((target_device, target_crtc, need_cpu))
+        .is_err()
+    {
         return Ok(());
     }
 
@@ -1062,10 +1109,12 @@ async fn handle_drm_conn(stream: Connection) -> ResultType<()> {
         };
         // Re-authorize per frame with the CACHE-ONLY active uid: a fresh lookup forks `loginctl` and
         // would stall every stream on this single-threaded runtime. A miss is fail-closed for a non-root peer
-            // (root stays authorized; see `drm_peer_authorized`).
+        // (root stays authorized; see `drm_peer_authorized`).
         let peer_ok = drm_peer_authorized(peer_uid, active_uid_cached());
         if !peer_ok {
-            log::warn!("drm: _drm peer no longer matches the active session (or it is unknown); closing");
+            log::warn!(
+                "drm: _drm peer no longer matches the active session (or it is unknown); closing"
+            );
             break;
         }
         let gen = DRM_DISPLAY_GENERATION.load(Ordering::Acquire);
@@ -1076,7 +1125,8 @@ async fn handle_drm_conn(stream: Connection) -> ResultType<()> {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .clone();
             // Send even an EMPTY list, or the consumer keeps advertising removed displays.
-            conn.send_msg(&Data::DrmDisplaysChanged(fresh), None).await?;
+            conn.send_msg(&Data::DrmDisplaysChanged(fresh), None)
+                .await?;
         }
         let mut latest_frame: Option<DrmProducerMsg> = held_frame.take();
         let mut msg = first.or_else(|| frame_rx.try_recv().ok());
@@ -1126,11 +1176,15 @@ async fn handle_drm_conn(stream: Connection) -> ResultType<()> {
                 // import cache keys on fb_id AND inode, and can only re-import when handed a real fd.
                 let send_fd = fd.is_some();
                 desc.has_fd = send_fd;
-                let borrowed = if send_fd { fd.as_ref().map(|f| f.as_fd()) } else { None };
+                let borrowed = if send_fd {
+                    fd.as_ref().map(|f| f.as_fd())
+                } else {
+                    None
+                };
                 conn.send_msg(&Data::DrmFrameDmabuf(desc), borrowed).await?;
                 credit -= 1; // one frame in flight until the consumer acks it
-                // `fd` (OwnedFd) is closed here whether or not it was attached (the cmsg dup'd it
-                // into the peer), which bounds our fd usage to ~1 in flight per frame.
+                             // `fd` (OwnedFd) is closed here whether or not it was attached (the cmsg dup'd it
+                             // into the peer), which bounds our fd usage to ~1 in flight per frame.
             }
             Some(DrmProducerMsg::FrameCpu {
                 width,
@@ -1296,7 +1350,11 @@ fn drm_capture_worker(
         None => {
             log::warn!(
                 "drm: failed to open crtc {target_crtc} on {}; closing _drm connection",
-                if target_device.is_empty() { "auto" } else { &target_device }
+                if target_device.is_empty() {
+                    "auto"
+                } else {
+                    &target_device
+                }
             );
             schedule_drm_cache_refresh();
             return;
@@ -1321,50 +1379,51 @@ fn drm_capture_worker(
     let mut next_frame = std::time::Instant::now();
     while !stop.load(Ordering::Relaxed) {
         let frame_due = std::time::Instant::now() >= next_frame;
-        let mut grabbed: Option<std::io::Result<DrmProducerMsg>> = if !frame_due
-            || frames_gated.load(Ordering::Relaxed)
-        {
-            // `stalled` is left untouched because the device is healthy -- the task bounds this
-            // state itself (CREDIT_STALL) since our watchdog cannot advance.
-            None
-        } else if use_dmabuf {
-            // Read right after the grab: the library answers for the plane that grab read from.
-            Some(match reader.grab_desc() {
-                Ok((fd, d)) => Ok(DrmProducerMsg::Frame {
-                    desc: DmabufDesc {
-                        buffer_id: (d.fb_id as u64) | ((conn_epoch as u64) << 32),
-                        width: d.width,
-                        height: d.height,
-                        format: d.format,
-                        modifier: d.modifier,
-                        fb_id: d.fb_id,
-                        num_planes: d.num_planes,
-                        offsets: d.offsets,
-                        pitches: d.pitches,
-                        hdr_eotf: d.hdr_eotf,
-                        hdr_max_nits: d.hdr_max_nits,
-                        has_fd: true, // every exported frame carries its fd; see the send below
+        let mut grabbed: Option<std::io::Result<DrmProducerMsg>> =
+            if !frame_due || frames_gated.load(Ordering::Relaxed) {
+                // `stalled` is left untouched because the device is healthy -- the task bounds this
+                // state itself (CREDIT_STALL) since our watchdog cannot advance.
+                None
+            } else if use_dmabuf {
+                // Read right after the grab: the library answers for the plane that grab read from.
+                Some(match reader.grab_desc() {
+                    Ok((fd, d)) => Ok(DrmProducerMsg::Frame {
+                        desc: DmabufDesc {
+                            buffer_id: (d.fb_id as u64) | ((conn_epoch as u64) << 32),
+                            width: d.width,
+                            height: d.height,
+                            format: d.format,
+                            modifier: d.modifier,
+                            fb_id: d.fb_id,
+                            num_planes: d.num_planes,
+                            offsets: d.offsets,
+                            pitches: d.pitches,
+                            hdr_eotf: d.hdr_eotf,
+                            hdr_max_nits: d.hdr_max_nits,
+                            has_fd: true, // every exported frame carries its fd; see the send below
+                            plane_rotation: reader.plane_rotation(),
+                            cursor_pos: None, // stamped below, from the one cursor read of this tick
+                        },
+                        fd: Some(fd),
+                    }),
+                    Err(err) => Err(err),
+                })
+            } else {
+                // The mapped buffer borrows the reader: copy it out, then take the rotation the grab
+                // recorded.
+                let copied = reader
+                    .grab()
+                    .map(|(buf, w, h)| (Bytes::copy_from_slice(buf), w as u32, h as u32));
+                Some(
+                    copied.map(|(data, width, height)| DrmProducerMsg::FrameCpu {
+                        width,
+                        height,
+                        data,
                         plane_rotation: reader.plane_rotation(),
-                        cursor_pos: None, // stamped below, from the one cursor read of this tick
-                    },
-                    fd: Some(fd),
-                }),
-                Err(err) => Err(err),
-            })
-        } else {
-            // The mapped buffer borrows the reader: copy it out, then take the rotation the grab
-            // recorded.
-            let copied = reader
-                .grab()
-                .map(|(buf, w, h)| (Bytes::copy_from_slice(buf), w as u32, h as u32));
-            Some(copied.map(|(data, width, height)| DrmProducerMsg::FrameCpu {
-                width,
-                height,
-                data,
-                plane_rotation: reader.plane_rotation(),
-                cursor_pos: None,
-            }))
-        };
+                        cursor_pos: None,
+                    }),
+                )
+            };
         // ONE cursor read per tick, and none on a stalled or failed grab: the plane position rides
         // the frame it was read next to, and the shape ships when it changes. The position is a
         // few ms newer than the frame; the consumer only measures a plane that held still for
@@ -1466,7 +1525,10 @@ fn drm_read_panel_period(
         Some((num, den)) => (drm_panel_period(num, den), format!("{num}/{den} Hz")),
         None => {
             let hz = drm_whole_hz(device, crtc);
-            (drm_panel_period(u64::from(hz), 1), format!("{hz} Hz (whole hertz)"))
+            (
+                drm_panel_period(u64::from(hz), 1),
+                format!("{hz} Hz (whole hertz)"),
+            )
         }
     };
     if prev != Some(period) {
@@ -1485,7 +1547,7 @@ fn drm_whole_hz(device: &str, crtc: u32) -> u32 {
 
 /// Ancillary-fd transport for `_drm`: `Framed`/`BytesCodec` cannot carry an SCM_RIGHTS cmsg, so the
 /// messages and raw bodies use a 4-byte big-endian length + payload, with any fd bound to the first
-    /// byte. The reverse-direction frame acks are bare bytes, not framed.
+/// byte. The reverse-direction frame acks are bare bytes, not framed.
 pub(crate) struct DrmConn {
     stream: tokio::net::UnixStream,
     read_buf: Vec<u8>,
@@ -1769,7 +1831,13 @@ impl DrmConn {
         if self.read_buf.len() < len {
             self.read_buf.resize(len, 0);
         }
-        drm_read_full(&self.stream, &mut self.read_buf[..len], false, &mut self.consumed).await?;
+        drm_read_full(
+            &self.stream,
+            &mut self.read_buf[..len],
+            false,
+            &mut self.consumed,
+        )
+        .await?;
         let data: Data = serde_json::from_slice(&self.read_buf[..len])?;
         Ok((data, fd))
     }
@@ -1892,8 +1960,8 @@ mod drm_conn_tests {
             },
             Some(rd.as_fd()),
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
         let (_data, fd) = rx.recv_msg().await.unwrap();
         let recv_fd = fd.expect("an fd was attached, it must be received");
         let sentinel = [0xABu8];
@@ -1903,7 +1971,13 @@ mod drm_conn_tests {
         );
         let mut got = [0u8; 1];
         assert_eq!(
-            unsafe { libc::read(recv_fd.as_raw_fd(), got.as_mut_ptr() as *mut libc::c_void, 1) },
+            unsafe {
+                libc::read(
+                    recv_fd.as_raw_fd(),
+                    got.as_mut_ptr() as *mut libc::c_void,
+                    1,
+                )
+            },
             1
         );
         assert_eq!(got[0], 0xAB, "received fd must be the same pipe");
@@ -1957,7 +2031,8 @@ mod drm_conn_tests {
     fn accept_time_exe_match_accepts_only_our_own_executable() {
         let me = std::process::id();
         assert!(
-            super::ipc_auth::ensure_peer_executable_matches_current_by_pid_opt(Some(me), "_drm").is_ok(),
+            super::ipc_auth::ensure_peer_executable_matches_current_by_pid_opt(Some(me), "_drm")
+                .is_ok(),
             "the test process must match its own executable"
         );
 
@@ -1979,18 +2054,27 @@ mod drm_conn_tests {
             }
         }
         let res = if exec_done {
-            super::ipc_auth::ensure_peer_executable_matches_current_by_pid_opt(Some(other.id()), "_drm")
+            super::ipc_auth::ensure_peer_executable_matches_current_by_pid_opt(
+                Some(other.id()),
+                "_drm",
+            )
         } else {
             Err(anyhow::anyhow!("child never exec'd; nothing was tested"))
         };
         let _ = other.kill();
         let _ = other.wait();
-        assert!(exec_done, "the spawned child never exec'd, so the negative case was not exercised");
+        assert!(
+            exec_done,
+            "the spawned child never exec'd, so the negative case was not exercised"
+        );
         assert!(
             res.is_err(),
             "a peer running another executable must be rejected, got {res:?}"
         );
 
-        assert!(super::ipc_auth::ensure_peer_executable_matches_current_by_pid_opt(None, "_drm").is_err());
+        assert!(
+            super::ipc_auth::ensure_peer_executable_matches_current_by_pid_opt(None, "_drm")
+                .is_err()
+        );
     }
 }

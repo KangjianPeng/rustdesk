@@ -213,7 +213,8 @@ pub fn available() -> Vec<DecodeContext> {
                                 vendors[i]
                             );
                             continue;
-                        },                    };
+                        }
+                    };
                     exclude_luid_formats.push((luids[i], input.data_format as i32));
                     outputs.push(input);
                 }

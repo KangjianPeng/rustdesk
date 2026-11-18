@@ -2,11 +2,11 @@
 // privileged export (open + grab the scanout dma-buf fd), the EGL detile / RGBA convert runs here.
 
 use crate::ipc::{connect_drm, Data, DrmDisplayInfo};
-use hbb_common::{anyhow::anyhow, bail, log, tokio, ResultType};
 use base::message_proto::DisplayInfo;
+use hbb_common::{anyhow::anyhow, bail, log, tokio, ResultType};
 use scrap::drm_render::RenderConverter;
 use scrap::drmtap_dl::drmtap_dmabuf_desc;
-use scrap::{Frame, Pixfmt, PixelBuffer, TraitCapturer};
+use scrap::{Frame, PixelBuffer, Pixfmt, TraitCapturer};
 use std::collections::BTreeMap;
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
@@ -22,7 +22,7 @@ const DISPLAY_LIST_TIMEOUT_MS: u64 = HANDSHAKE_TIMEOUT_MS + 4000;
 /// (first byte, then body). The render-node open and the DrmStart send can still overrun it.
 const HANDSHAKE_WAIT_MS: u64 = DRM_CONNECT_TIMEOUT_MS + DISPLAY_LIST_TIMEOUT_MS * 2 + 500;
 /// Only the header read rechecks `stop`, so bound the body read here rather than relying on
-    /// `next_raw_into`'s own cap.
+/// `next_raw_into`'s own cap.
 const BODY_READ_TIMEOUT: Duration = Duration::from_secs(5);
 /// A repeat of the frame returned last goes out anyway once this much time has passed since
 /// then: a frame whose encode failed reaches the encoder again, even if nothing moves.
@@ -234,7 +234,9 @@ fn unrotate_bgra(src: &[u8], w: usize, h: usize, transform: i32, dst: &mut Vec<u
     let stride = if h > 0 { src.len() / h } else { 0 };
     let (dw, dh) = rotated_dims(transform, w, h);
     dst.resize(
-        dw.checked_mul(dh).and_then(|p| p.checked_mul(PX)).unwrap_or(0),
+        dw.checked_mul(dh)
+            .and_then(|p| p.checked_mul(PX))
+            .unwrap_or(0),
         0,
     );
     if dst.is_empty() || stride < w * PX {
@@ -338,7 +340,7 @@ fn display_info_of(display: i32) -> Option<DrmDisplayInfo> {
 }
 
 /// A delivered frame resets the streak verdicts (`zero_frame_streak`, `demotes`, `since`) and
-    /// nothing else.
+/// nothing else.
 #[derive(Clone, Copy)]
 struct DisplayHealth {
     zero_frame_streak: u32,
@@ -450,7 +452,8 @@ static UNROTATED_SNAPSHOT_PENDING: std::sync::atomic::AtomicBool =
 pub(super) fn take_unrotated_snapshot_pending() -> bool {
     UNROTATED_SNAPSHOT_PENDING.swap(false, std::sync::atomic::Ordering::AcqRel)
 }
-static UINPUT_REFRESH_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static UINPUT_REFRESH_BUSY: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 impl IpcDrmCapturer {
     /// The service resolves indices against ITS OWN enumeration, so the receive thread re-resolves
@@ -458,7 +461,12 @@ impl IpcDrmCapturer {
     pub fn new(
         display: i32,
         expected: Option<DrmDisplayInfo>,
-    ) -> ResultType<(IpcDrmCapturer, Vec<DrmDisplayInfo>, usize, Option<(i32, i32)>)> {
+    ) -> ResultType<(
+        IpcDrmCapturer,
+        Vec<DrmDisplayInfo>,
+        usize,
+        Option<(i32, i32)>,
+    )> {
         let shared = Arc::new(Shared {
             slot: Mutex::new(FrameSlot {
                 latest: None,
@@ -499,7 +507,10 @@ impl IpcDrmCapturer {
         let cal = calibration_context(&displays, wire_idx, &wl, snapshot_gen);
         log::info!(
             "drm: cursor calibration for display {display} ({}): {cal:?}",
-            displays.get(wire_idx).map(|d| d.name.as_str()).unwrap_or("?")
+            displays
+                .get(wire_idx)
+                .map(|d| d.name.as_str())
+                .unwrap_or("?")
         );
         *shared.cal_context.lock().unwrap() = cal.ok();
         // This capturer now shows that layout. If the session init's own wayland query failed it
@@ -622,7 +633,10 @@ impl TraitCapturer for IpcDrmCapturer {
                 // first frame: CRTC mode vs scanout fb.
                 let t = frame_transform(self.transform, plane_rotation);
                 let (fw, fh) = rotated_dims(t, w, h);
-                if self.session_size.is_some_and(|(sw, sh)| (fw, fh) != (sw, sh)) {
+                if self
+                    .session_size
+                    .is_some_and(|(sw, sh)| (fw, fh) != (sw, sh))
+                {
                     self.shared.slot.lock().unwrap().recycle(buf);
                     if !self.got_frame {
                         self.note_session_without_frame();
@@ -833,12 +847,26 @@ async fn recv_thread(
             break "stopped".to_owned();
         }
         if pending_cursor.is_some() {
-            let t = shared.cursor_transform.load(std::sync::atomic::Ordering::Acquire);
+            let t = shared
+                .cursor_transform
+                .load(std::sync::atomic::Ordering::Acquire);
             if t != TRANSFORM_PENDING {
-                if let Some((id, width, height, hotx, hoty, hot_measured, raw)) = pending_cursor.take() {
+                if let Some((id, width, height, hotx, hoty, hot_measured, raw)) =
+                    pending_cursor.take()
+                {
                     let ctx = *shared.cal_context.lock().unwrap();
                     cal = on_cursor_shape(
-                        display, cursor_epoch, ctx, id, width, height, hotx, hoty, hot_measured, raw, t,
+                        display,
+                        cursor_epoch,
+                        ctx,
+                        id,
+                        width,
+                        height,
+                        hotx,
+                        hoty,
+                        hot_measured,
+                        raw,
+                        t,
                     );
                 }
             }
@@ -872,7 +900,8 @@ async fn recv_thread(
                     match recv_fd.as_ref() {
                         Some(f) => f.as_raw_fd(),
                         None => {
-                            break "dma-buf frame set has_fd but carried no SCM_RIGHTS fd".to_owned()
+                            break "dma-buf frame set has_fd but carried no SCM_RIGHTS fd"
+                                .to_owned()
                         }
                     }
                 } else {
@@ -914,7 +943,10 @@ async fn recv_thread(
                 // `recv_fd` closes at the end of this iteration, AFTER convert imported it.
                 // Ack so the producer RELEASES ONE SEND CREDIT and forwards the next; this bounds
                 // the socket to a couple of in-flight frames instead of a stale backlog.
-                if let Err(err) = conn.send_frame_ack(shared.demand_fps.load(Ordering::Relaxed)).await {
+                if let Err(err) = conn
+                    .send_frame_ack(shared.demand_fps.load(Ordering::Relaxed))
+                    .await
+                {
                     break format!("frame ack: {err}");
                 }
             }
@@ -968,7 +1000,10 @@ async fn recv_thread(
                     Ok(Err(err)) => break format!("frame body: {err}"),
                 }
                 // Ack this CPU frame too (flow control; see the dma-buf arm above).
-                if let Err(err) = conn.send_frame_ack(shared.demand_fps.load(Ordering::Relaxed)).await {
+                if let Err(err) = conn
+                    .send_frame_ack(shared.demand_fps.load(Ordering::Relaxed))
+                    .await
+                {
                     break format!("frame ack: {err}");
                 }
             }
@@ -997,10 +1032,13 @@ async fn recv_thread(
                                 raw.len()
                             );
                         }
-                        let t = shared.cursor_transform.load(std::sync::atomic::Ordering::Acquire);
+                        let t = shared
+                            .cursor_transform
+                            .load(std::sync::atomic::Ordering::Acquire);
                         if t == TRANSFORM_PENDING {
                             cal = None;
-                            pending_cursor = Some((id, width, height, hotx, hoty, hot_measured, raw));
+                            pending_cursor =
+                                Some((id, width, height, hotx, hoty, hot_measured, raw));
                         } else {
                             pending_cursor = None;
                             let ctx = *shared.cal_context.lock().unwrap();
@@ -1055,35 +1093,35 @@ async fn recv_thread(
                     let spawned = std::thread::Builder::new()
                         .name("drm-uinput-refresh".into())
                         .spawn(move || {
-                        let rt = match tokio::runtime::Builder::new_current_thread()
-                            .enable_all()
-                            .build()
-                        {
-                            Ok(rt) => rt,
-                            Err(err) => {
-                                log::warn!(
+                            let rt = match tokio::runtime::Builder::new_current_thread()
+                                .enable_all()
+                                .build()
+                            {
+                                Ok(rt) => rt,
+                                Err(err) => {
+                                    log::warn!(
                                     "drm: uinput refresh worker could not build a runtime: {err}"
                                 );
-                                return; // the guard hands the slot back
+                                    return; // the guard hands the slot back
+                                }
+                            };
+                            let mut served = 0u64;
+                            loop {
+                                let g = UINPUT_REFRESH_GEN.load(Ordering::Acquire);
+                                if g != served {
+                                    served = g;
+                                    rt.block_on(super::wayland::update_uinput_resolution());
+                                    continue;
+                                }
+                                busy.release();
+                                if UINPUT_REFRESH_GEN.load(Ordering::Acquire) == served {
+                                    break;
+                                }
+                                if !busy.retake() {
+                                    break; // another handler already started a fresh worker
+                                }
                             }
-                        };
-                        let mut served = 0u64;
-                        loop {
-                            let g = UINPUT_REFRESH_GEN.load(Ordering::Acquire);
-                            if g != served {
-                                served = g;
-                                rt.block_on(super::wayland::update_uinput_resolution());
-                                continue;
-                            }
-                            busy.release();
-                            if UINPUT_REFRESH_GEN.load(Ordering::Acquire) == served {
-                                break;
-                            }
-                            if !busy.retake() {
-                                break; // another handler already started a fresh worker
-                            }
-                        }
-                    });
+                        });
                     if let Err(err) = spawned {
                         log::error!("drm: could not spawn the uinput refresh worker: {err}");
                     }
@@ -1113,7 +1151,6 @@ pub struct DrmCursorData {
     pub hoty: i32,
     pub colors: Vec<u8>,
 }
-
 
 // The kernel only exposes a cursor hotspot on DRIVER_CURSOR_HOTSPOT drivers (VMs); on bare metal
 // the wire carries `infer_hotspot`'s guess, which the bitmap alone cannot get right for a shape
@@ -1336,7 +1373,10 @@ fn apply_confirmed_hotspot(c: &mut CursorCal, accepted: Hotspot, display: i32, c
         store_cursor_cal(c.id, accepted, c.ctx.built_gen);
         accepted
     };
-    debug_assert_ne!(target, c.current_hot, "not near the served value, so a change");
+    debug_assert_ne!(
+        target, c.current_hot,
+        "not near the served value, so a change"
+    );
     c.current_hot = target;
     let id = if target == c.wire_hot {
         c.id
@@ -1458,7 +1498,18 @@ fn on_cursor_shape(
         ),
         _ => (id, hotx, hoty),
     };
-    deliver_drm_cursor(display, cursor_epoch, pid, width, height, hx, hy, hot_measured, raw, t);
+    deliver_drm_cursor(
+        display,
+        cursor_epoch,
+        pid,
+        width,
+        height,
+        hx,
+        hy,
+        hot_measured,
+        raw,
+        t,
+    );
     cal
 }
 
@@ -1624,9 +1675,7 @@ fn note_received_provenance(display: i32, id: u64, hot_measured: bool) {
               preserves what the old protocol meant)"
         );
     } else {
-        log::info!(
-            "drm: cursor hotspots arrive as a GUESS; re-inferring from the upright bitmap"
-        );
+        log::info!("drm: cursor hotspots arrive as a GUESS; re-inferring from the upright bitmap");
     }
 }
 
@@ -1701,13 +1750,14 @@ const DRM_PROBE_MAX_FAILURES: u32 = 5;
 static DRM_REFRESH_FAILURES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 const DRM_REFRESH_MAX_FAILURES: u32 = 3;
 // Single-flight, so is_available() never calls query_displays() (~4s of IPC) holding DRM_STATE.
-static DRM_PROBE_IN_FLIGHT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static DRM_PROBE_IN_FLIGHT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Advanced by every publish, so a slow UNLOCKED probe can tell a newer verdict landed meanwhile.
 static DRM_STATE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// EVERY verdict change to DRM_STATE goes through here so the generation stays truthful; the TTL
-    /// restamp in `refresh_available_async` is the one direct write.
+/// restamp in `refresh_available_async` is the one direct write.
 #[inline]
 fn publish_probe_state(st: &mut ProbeState, next: ProbeState) {
     *st = next;
@@ -1856,7 +1906,10 @@ fn probe_and_publish() -> Availability {
             Availability::Available
         }
         Ok(_) => {
-            log::info!("drm: availability probe -> no displays in {:?}", t.elapsed());
+            log::info!(
+                "drm: availability probe -> no displays in {:?}",
+                t.elapsed()
+            );
             publish_probe_state(&mut st, ProbeState::Unavailable(Instant::now()));
             Availability::Unavailable
         }
@@ -2026,7 +2079,10 @@ pub(super) fn warm_availability() {
                 let mut st = DRM_STATE.lock().unwrap();
                 // A login probe that published while this query ran keeps its newer list.
                 if DRM_STATE_GEN.load(Ordering::Acquire) == sampled_gen {
-                    log::info!("drm: consumer cache warmed ({} displays) at startup", list.len());
+                    log::info!(
+                        "drm: consumer cache warmed ({} displays) at startup",
+                        list.len()
+                    );
                     publish_probe_state(&mut st, ProbeState::Available(Instant::now(), list));
                 }
                 return;
@@ -2341,10 +2397,9 @@ fn assign_wayland_outputs(
         if matched[i].is_some() {
             continue;
         }
-        let free_same_size = wl
-            .iter()
-            .enumerate()
-            .position(|(j, w)| !taken[j] && w.width == d.width as i32 && w.height == d.height as i32);
+        let free_same_size = wl.iter().enumerate().position(|(j, w)| {
+            !taken[j] && w.width == d.width as i32 && w.height == d.height as i32
+        });
         let Some(j) = free_same_size.or_else(|| taken.iter().position(|t| !t)) else {
             continue; // more connectors than outputs; leave the rest unaugmented
         };
@@ -2362,12 +2417,12 @@ fn assign_wayland_outputs(
     matched
 }
 
-
 /// DRM inserts a single-letter type discriminator the compositor drops ("HDMI-A-1" -> "HDMI-1").
 /// Only a *letter* folds: a single *digit* is an MST port index, so "DP-1-2" is not "DP-2".
 fn normalize_connector(name: &str) -> String {
     let parts: Vec<&str> = name.split('-').collect();
-    if parts.len() == 3 && parts[1].len() == 1 && parts[1].chars().all(|c| c.is_ascii_alphabetic()) {
+    if parts.len() == 3 && parts[1].len() == 1 && parts[1].chars().all(|c| c.is_ascii_alphabetic())
+    {
         format!("{}-{}", parts[0], parts[2])
     } else {
         name.to_string()
@@ -2573,7 +2628,10 @@ mod drm_capturer_tests {
         let mut dst = Vec::new();
         unrotate_bgra(&src, w, h, 90, &mut dst);
         // src left column top-to-bottom = [1, 4]; clockwise puts it on the top row as [4, 1].
-        assert_eq!(labels_of(&dst, h, w), vec![vec![4, 1], vec![5, 2], vec![6, 3]]);
+        assert_eq!(
+            labels_of(&dst, h, w),
+            vec![vec![4, 1], vec![5, 2], vec![6, 3]]
+        );
     }
 
     /// An upright arrow, tip at (0,0): a 4x6 bitmap, every pixel with x <= y/2 opaque, so the
@@ -2646,12 +2704,20 @@ mod drm_capturer_tests {
         );
         let (id, mw, mh, mx, my, measured) =
             match serde_json::from_str::<Data>(&legacy).expect("a legacy DrmCursor must parse") {
-                Data::DrmCursor { id, width, height, hotx, hoty, hot_measured } => {
-                    (id, width, height, hotx, hoty, hot_measured)
-                }
+                Data::DrmCursor {
+                    id,
+                    width,
+                    height,
+                    hotx,
+                    hoty,
+                    hot_measured,
+                } => (id, width, height, hotx, hoty, hot_measured),
                 other => panic!("expected DrmCursor, got {other:?}"),
             };
-        assert!(measured, "no provenance on the wire must mean what the old protocol meant");
+        assert!(
+            measured,
+            "no provenance on the wire must mean what the old protocol meant"
+        );
 
         // The two branches must disagree here, or the assertion below proves nothing.
         let mapped = unrotate_hotspot(t, mw as i32, mh as i32, mx, my);
@@ -2668,7 +2734,9 @@ mod drm_capturer_tests {
         deliver_drm_cursor(display, 1, id, mw, mh, mx, my, measured, scan, t);
         let published = {
             let map = DRM_CURSOR.lock().unwrap();
-            let (_, c) = map.get(&display).expect("the delivery path published nothing");
+            let (_, c) = map
+                .get(&display)
+                .expect("the delivery path published nothing");
             (c.hotx, c.hoty)
         };
         assert_eq!(
@@ -2689,10 +2757,23 @@ mod drm_capturer_tests {
         };
         assert!(!hot_measured);
         let (scan2, _, _) = as_scanned_out(&up, w, h, t);
-        deliver_drm_cursor(display + 1, 1, 12, sw as u32, sh as u32, hotx, hoty, false, scan2, t);
+        deliver_drm_cursor(
+            display + 1,
+            1,
+            12,
+            sw as u32,
+            sh as u32,
+            hotx,
+            hoty,
+            false,
+            scan2,
+            t,
+        );
         let published2 = {
             let map = DRM_CURSOR.lock().unwrap();
-            let (_, c) = map.get(&(display + 1)).expect("nothing published for the control");
+            let (_, c) = map
+                .get(&(display + 1))
+                .expect("nothing published for the control");
             (c.hotx, c.hoty)
         };
         assert_eq!(
@@ -2711,7 +2792,9 @@ mod drm_capturer_tests {
             let (scan, sw, sh) = as_scanned_out(&up, w, h, t);
             deliver_drm_cursor(display, 1, 7, sw as u32, sh as u32, 0, 0, false, scan, t);
             let map = DRM_CURSOR.lock().unwrap();
-            let (_, c) = map.get(&display).expect("the cursor path published nothing");
+            let (_, c) = map
+                .get(&display)
+                .expect("the cursor path published nothing");
             assert_eq!(
                 (c.width as usize, c.height as usize),
                 (w, h),
@@ -2746,7 +2829,10 @@ mod drm_capturer_tests {
         match c.frame(Duration::from_millis(50)) {
             Ok(Frame::PixelBuffer(pb)) => {
                 assert_eq!((pb.width(), pb.height()), (w, h));
-                assert_eq!(labels_of(pb.data(), w, h), vec![vec![6, 5, 4], vec![3, 2, 1]]);
+                assert_eq!(
+                    labels_of(pb.data(), w, h),
+                    vec![vec![6, 5, 4], vec![3, 2, 1]]
+                );
             }
             Ok(_) => panic!("expected a pixel-buffer frame"),
             Err(err) => panic!("expected a delivered frame, got {err}"),
@@ -2761,7 +2847,10 @@ mod drm_capturer_tests {
         put_frame_with(&c, w, h, Some(0x4), &src);
         match c.frame(Duration::from_millis(50)) {
             Ok(Frame::PixelBuffer(pb)) => {
-                assert_eq!(labels_of(pb.data(), w, h), vec![vec![1, 2, 3], vec![4, 5, 6]]);
+                assert_eq!(
+                    labels_of(pb.data(), w, h),
+                    vec![vec![1, 2, 3], vec![4, 5, 6]]
+                );
             }
             Ok(_) => panic!("expected a pixel-buffer frame"),
             Err(err) => panic!("expected a delivered frame, got {err}"),
@@ -2772,7 +2861,10 @@ mod drm_capturer_tests {
         put_frame_with(&c, w, h, None, &other);
         match c.frame(Duration::from_millis(50)) {
             Ok(Frame::PixelBuffer(pb)) => {
-                assert_eq!(labels_of(pb.data(), w, h), vec![vec![7, 8, 9], vec![10, 11, 12]]);
+                assert_eq!(
+                    labels_of(pb.data(), w, h),
+                    vec![vec![7, 8, 9], vec![10, 11, 12]]
+                );
             }
             Ok(_) => panic!("expected a pixel-buffer frame"),
             Err(err) => panic!("expected a delivered frame, got {err}"),
@@ -2815,7 +2907,10 @@ mod drm_capturer_tests {
         match c.frame(Duration::from_millis(50)) {
             Ok(Frame::PixelBuffer(pb)) => {
                 assert_eq!((pb.width(), pb.height()), (pw, ph));
-                assert_eq!(labels_of(pb.data(), pw, ph), vec![vec![1, 2], vec![3, 4], vec![5, 6]]);
+                assert_eq!(
+                    labels_of(pb.data(), pw, ph),
+                    vec![vec![1, 2], vec![3, 4], vec![5, 6]]
+                );
             }
             Ok(_) => panic!("expected a pixel-buffer frame"),
             Err(err) => panic!("expected a delivered frame, got {err}"),
@@ -2843,7 +2938,10 @@ mod drm_capturer_tests {
         let mut dst = Vec::new();
         unrotate_bgra(&src, w, h, 90, &mut dst);
         assert_eq!(dst.len(), w * h * 4);
-        assert_eq!(labels_of(&dst, h, w), vec![vec![4, 1], vec![5, 2], vec![6, 3]]);
+        assert_eq!(
+            labels_of(&dst, h, w),
+            vec![vec![4, 1], vec![5, 2], vec![6, 3]]
+        );
         let mut plain = Vec::new();
         unrotate_bgra(&src, w, h, 0, &mut plain);
         assert_eq!(labels_of(&plain, w, h), vec![vec![1, 2, 3], vec![4, 5, 6]]);
@@ -2888,7 +2986,13 @@ mod drm_capturer_tests {
     fn put_frame_rot(c: &IpcDrmCapturer, w: usize, h: usize, plane_rotation: Option<u32>) {
         // Each call differs in its first pixel: frame() drops a frame equal to the last one.
         static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let mut buf = c.shared.slot.lock().unwrap().take_free().unwrap_or_default();
+        let mut buf = c
+            .shared
+            .slot
+            .lock()
+            .unwrap()
+            .take_free()
+            .unwrap_or_default();
         buf.clear();
         buf.resize(w * h * 4, 0);
         buf[..4].copy_from_slice(&SEQ.fetch_add(1, Ordering::Relaxed).to_le_bytes());
@@ -2904,7 +3008,13 @@ mod drm_capturer_tests {
         plane_rotation: Option<u32>,
         pixels: &[u8],
     ) {
-        let mut buf = c.shared.slot.lock().unwrap().take_free().unwrap_or_default();
+        let mut buf = c
+            .shared
+            .slot
+            .lock()
+            .unwrap()
+            .take_free()
+            .unwrap_or_default();
         buf.clear();
         buf.extend_from_slice(pixels);
         assert_eq!(buf.len(), w * h * 4);
@@ -3005,12 +3115,24 @@ mod drm_capturer_tests {
         (gen, map_gen, map_epoch): (u64, u64, u64),
     ) {
         for _ in 0..=CURSOR_CAL_STABLE_TICKS {
-            on_cursor_plane(cal, Some(plane), || sample, false, gen, map_gen, map_epoch, display, epoch);
+            on_cursor_plane(
+                cal,
+                Some(plane),
+                || sample,
+                false,
+                gen,
+                map_gen,
+                map_epoch,
+                display,
+                epoch,
+            );
         }
     }
     fn served(display: i32) -> (u64, i32, i32) {
         let map = DRM_CURSOR.lock().unwrap();
-        let (_, c) = map.get(&display).expect("a shape was published for this display");
+        let (_, c) = map
+            .get(&display)
+            .expect("a shape was published for this display");
         (c.id, c.hotx, c.hoty)
     }
     fn plain(shape: u64) -> u64 {
@@ -3035,7 +3157,11 @@ mod drm_capturer_tests {
         settle(&mut cal, (488, 288), Some(peer((500, 300), 1)), d, e);
         assert_eq!(cal.as_ref().unwrap().candidate, Some(((12, 12), 1, 0)));
         assert_eq!(cal.as_ref().unwrap().current_hot, (4, 4));
-        assert_eq!(served(d), (plain(shape), 4, 4), "unconfirmed: nothing visible changes");
+        assert_eq!(
+            served(d),
+            (plain(shape), 4, 4),
+            "unconfirmed: nothing visible changes"
+        );
         assert_eq!(cached_cursor_cal(shape, CAL_GEN), None);
         // (600,400) - (587,388) = (13,12): confirms (12,12).
         settle(&mut cal, (587, 388), Some(peer((600, 400), 2)), d, e);
@@ -3067,11 +3193,17 @@ mod drm_capturer_tests {
             })
         );
         for t in [90, 180, 270] {
-            assert!(calibration_context(&drm, 0, &one(t), 7).is_err(), "transform {t}");
+            assert!(
+                calibration_context(&drm, 0, &one(t), 7).is_err(),
+                "transform {t}"
+            );
         }
         // A plane that rotated folds 180 to 0 for the FRAME; that fold must never reach the
         // calibration.
-        assert_eq!(frame_transform(transform_and_origin(&drm, 0, &one(180)).0, Some(0x4)), 0);
+        assert_eq!(
+            frame_transform(transform_and_origin(&drm, 0, &one(180)).0, Some(0x4)),
+            0
+        );
         // Partial snapshot: two connectors, one output, even one with a matching name.
         let two = [
             drm_display("HDMI-A-1", 1920, 1080),
@@ -3123,29 +3255,47 @@ mod drm_capturer_tests {
         };
         let ctx = calibration_context(&panel, 0, &wl, 7).unwrap();
         assert_eq!(ctx.rect, (0, 0, 1986, 1241));
-        assert_eq!(measure_hotspot(&ctx, (1643, 577), (2357, 814), (128, 128)), Some((26, 23)));
+        assert_eq!(
+            measure_hotspot(&ctx, (1643, 577), (2357, 814), (128, 128)),
+            Some((26, 23))
+        );
     }
 
     #[test]
     fn the_measurement_is_the_injected_tip_in_scanout_space_minus_the_plane() {
         let ctx = ctx1();
-        assert_eq!(measure_hotspot(&ctx, (500, 300), (488, 288), (32, 32)), Some((12, 12)));
+        assert_eq!(
+            measure_hotspot(&ctx, (500, 300), (488, 288), (32, 32)),
+            Some((12, 12))
+        );
         // The T2 reading that found the space mismatch: 2880x1800 advertised as 1986x1241.
         let scaled = CalContext {
             rect: (0, 0, 1986, 1241),
             physical_size: (2880, 1800),
             built_gen: CAL_GEN,
         };
-        assert_eq!(measure_hotspot(&scaled, (1643, 577), (2357, 814), (128, 128)), Some((26, 23)));
+        assert_eq!(
+            measure_hotspot(&scaled, (1643, 577), (2357, 814), (128, 128)),
+            Some((26, 23))
+        );
         // The pointer is on another monitor: that stream measures, not this one.
         let right = CalContext {
             rect: (1920, 0, 1920, 1080),
             ..ctx
         };
-        assert_eq!(measure_hotspot(&right, (500, 300), (488, 288), (32, 32)), None);
+        assert_eq!(
+            measure_hotspot(&right, (500, 300), (488, 288), (32, 32)),
+            None
+        );
         // Outside the bitmap: far away, and the plane ahead of the tip.
-        assert_eq!(measure_hotspot(&ctx, (900, 300), (488, 288), (32, 32)), None);
-        assert_eq!(measure_hotspot(&ctx, (480, 300), (488, 288), (32, 32)), None);
+        assert_eq!(
+            measure_hotspot(&ctx, (900, 300), (488, 288), (32, 32)),
+            None
+        );
+        assert_eq!(
+            measure_hotspot(&ctx, (480, 300), (488, 288), (32, 32)),
+            None
+        );
     }
 
     fn drm_display(name: &str, w: u32, h: u32) -> DrmDisplayInfo {
@@ -3295,7 +3445,10 @@ mod drm_capturer_tests {
         ];
         let m = identity_matches(&drm, &wl);
         assert_eq!(m[1], Some(0), "the exact name match must win globally");
-        assert_eq!(m[0], None, "the leftover pairing is not forced, so no identity");
+        assert_eq!(
+            m[0], None,
+            "the leftover pairing is not forced, so no identity"
+        );
         // Two unmatched connectors at the lone free resolution: ambiguous on the DRM side too,
         // so rotation must not be pinned on either.
         let drm2 = vec![
@@ -3310,7 +3463,10 @@ mod drm_capturer_tests {
     // The M10 case: same model and resolution, names that do not normalize to the compositor's.
     #[test]
     fn identical_monitors_that_match_no_name_take_layout_order() {
-        let drm = [drm_display("DP-1", 1920, 1080), drm_display("DP-2", 1920, 1080)];
+        let drm = [
+            drm_display("DP-1", 1920, 1080),
+            drm_display("DP-2", 1920, 1080),
+        ];
         let wl = [
             wl_display("Unknown-1", 0, 0, 1920, 1080),
             wl_display("Unknown-2", 1920, 0, 1920, 1080),
@@ -3323,14 +3479,23 @@ mod drm_capturer_tests {
         let mut h = DisplayHealth::new();
         assert!(!h.demoted(), "a fresh display is not demoted");
         h.zero_frame_streak = DRM_GRAB_MAX_FAILURES - 1;
-        assert!(!h.demoted(), "one session short of the threshold is not demoted");
+        assert!(
+            !h.demoted(),
+            "one session short of the threshold is not demoted"
+        );
         h.zero_frame_streak = DRM_GRAB_MAX_FAILURES;
         h.demotes = 1;
         assert!(h.demoted(), "at the threshold, inside the cooldown");
         h.since = Instant::now() - demote_cooldown(h.demotes) - Duration::from_secs(1);
-        assert!(!h.demoted(), "past the cooldown the display must be retried");
+        assert!(
+            !h.demoted(),
+            "past the cooldown the display must be retried"
+        );
         h.demotes = 4;
-        assert!(h.demoted(), "the backoff must still be holding it at demotion 4");
+        assert!(
+            h.demoted(),
+            "the backoff must still be holding it at demotion 4"
+        );
     }
 
     // ---------------------------------------------------------------------------------------
@@ -3439,7 +3604,9 @@ mod drm_capturer_tests {
                 let base = unrotate_hotspot(t, sw as i32, sh as i32, sent.0, sent.1);
                 // The flow in this PR, read back from the real delivery path.
                 display += 1;
-                deliver_drm_cursor(display, 1, 1, sw as u32, sh as u32, sent.0, sent.1, false, scan, t);
+                deliver_drm_cursor(
+                    display, 1, 1, sw as u32, sh as u32, sent.0, sent.1, false, scan, t,
+                );
                 let head = {
                     let map = DRM_CURSOR.lock().unwrap();
                     let (_, c) = map.get(&display).expect("nothing published");

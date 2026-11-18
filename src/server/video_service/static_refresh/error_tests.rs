@@ -248,8 +248,7 @@ fn vpx_dropped_capture_repeats_the_latest_frame() {
         assert!(result.vpx_no_output);
         refresh.on_frame_encoded(&result);
         assert_eq!(rx.len(), 0);
-        for (elapsed_ms, expected_calls, expected_outputs) in
-            [(99, 2, 0), (100, 3, 0), (100, 4, 1)]
+        for (elapsed_ms, expected_calls, expected_outputs) in [(99, 2, 0), (100, 3, 0), (100, 4, 1)]
         {
             refresh.elapsed_since_encode = Duration::from_millis(elapsed_ms);
             refresh
@@ -266,7 +265,10 @@ fn vpx_dropped_capture_repeats_the_latest_frame() {
             assert_eq!(state.borrow().calls, expected_calls, "{codec:?}");
             assert_eq!(rx.len(), expected_outputs);
         }
-        assert_eq!(state.borrow().inputs, vec![vec![1], vec![2], vec![2], vec![2]]);
+        assert_eq!(
+            state.borrow().inputs,
+            vec![vec![1], vec![2], vec![2], vec![2]]
+        );
         assert_eq!(state.borrow().disabled, 0);
         sp.on_unsubscribe(1);
     }

@@ -1,5 +1,5 @@
-use clipboard::ClipboardFile;
 use base::message_proto::*;
+use clipboard::ClipboardFile;
 
 pub fn clip_2_msg(clip: ClipboardFile) -> Message {
     match clip {
@@ -339,10 +339,7 @@ pub mod unix_file_clip {
                 log::debug!("format data response: msg_flags: {}", msg_flags);
 
                 if msg_flags != 0x1 {
-                    log::error!(
-                        "peer reported clipboard format data failure: {}",
-                        msg_flags
-                    );
+                    log::error!("peer reported clipboard format data failure: {}", msg_flags);
                     return vec![];
                 }
 

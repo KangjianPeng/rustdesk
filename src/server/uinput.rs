@@ -315,11 +315,18 @@ pub mod client {
                 .block_on(self.conn.send(&Data::Mouse(DataMouse::Refresh)))?;
             // Wait for the service to confirm it recreated the device, so a
             // failed refresh is distinguishable from a good one.
-            match self.rt.block_on(self.conn.next_timeout(IPC_REQUEST_TIMEOUT)) {
+            match self
+                .rt
+                .block_on(self.conn.next_timeout(IPC_REQUEST_TIMEOUT))
+            {
                 Ok(Some(Data::Empty)) => Ok(()),
                 Ok(Some(resp)) => bail!("unexpected uinput mouse refresh response: {:?}", &resp),
                 Ok(None) => bail!("uinput mouse refresh failed, connection closed"),
-                Err(e) => bail!("uinput mouse refresh timeout {}, {}", IPC_REQUEST_TIMEOUT, e),
+                Err(e) => bail!(
+                    "uinput mouse refresh timeout {}, {}",
+                    IPC_REQUEST_TIMEOUT,
+                    e
+                ),
             }
         }
     }

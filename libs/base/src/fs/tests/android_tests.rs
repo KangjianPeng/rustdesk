@@ -14,8 +14,11 @@ fn provider(output: &Path, request: &str) -> ResultType<String> {
     use std::{fs::File, os::fd::IntoRawFd};
 
     let request: Value = serde_json::from_str(request)?;
-    let modified = output.metadata().map_or(0, |m| std::os::unix::fs::MetadataExt::mtime(&m));
-    let metadata = json!({"name": "notes.txt", "directory": false, "size": 12, "modified": modified});
+    let modified = output
+        .metadata()
+        .map_or(0, |m| std::os::unix::fs::MetadataExt::mtime(&m));
+    let metadata =
+        json!({"name": "notes.txt", "directory": false, "size": 12, "modified": modified});
     let value = match request["op"].as_str() {
         Some("home") => json!("/@rustdesk/tree/selected/Documents"),
         Some("allowed") => json!(true),

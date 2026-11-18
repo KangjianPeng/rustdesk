@@ -353,9 +353,8 @@ fn refresh_wayland_uinput_rect_if_changed() {
         #[cfg(not(feature = "drm"))]
         let generation = 0;
         let live_changed = layout.edge(&live_rects, snapshot_missing, generation);
-        let drifted = !layout.baseline.is_empty()
-            && !live_rects.is_empty()
-            && layout.baseline != live_rects;
+        let drifted =
+            !layout.baseline.is_empty() && !live_rects.is_empty() && layout.baseline != live_rects;
         layout.observe(&live_rects);
         (live_changed, drifted)
     };

@@ -1,6 +1,6 @@
 use super::{gtk_sudo, CursorData, ResultType};
-use desktop::Desktop;
 pub use base::platform::linux::*;
+use desktop::Desktop;
 
 #[cfg(feature = "drm")]
 pub fn dispatch_wayland_display_probe() {
@@ -10,6 +10,7 @@ pub fn dispatch_wayland_display_probe() {
         wayland_display_probe_child_main();
     }
 }
+use base::message_proto::{DisplayInfo, Resolution};
 use hbb_common::{
     allow_err,
     anyhow::anyhow,
@@ -20,7 +21,6 @@ use hbb_common::{
     regex::{Captures, Regex},
     users::{get_user_by_name, os::unix::UserExt},
 };
-use base::message_proto::{DisplayInfo, Resolution};
 use libxdo_sys::{self, xdo_t, Window};
 use std::{
     cell::RefCell,
@@ -306,13 +306,15 @@ pub fn right_alt_is_level3_shift() -> ResultType<bool> {
         if status != c_int::from(xlib::Success) {
             bail!("XkbGetState failed: {}", status);
         }
-        let symbol = unsafe {
-            xlib::XkbKeycodeToKeysym(display, code as _, state.group.into(), 0)
-        };
+        let symbol = unsafe { xlib::XkbKeycodeToKeysym(display, code as _, state.group.into(), 0) };
         // Physical Right Alt is ordinary Alt on layouts such as US English.
-        Ok(matches!(symbol as u32, keysym::XK_ISO_Level3_Shift
-            | keysym::XK_ISO_Level3_Latch | keysym::XK_ISO_Level3_Lock
-            | keysym::XK_Mode_switch))
+        Ok(matches!(
+            symbol as u32,
+            keysym::XK_ISO_Level3_Shift
+                | keysym::XK_ISO_Level3_Latch
+                | keysym::XK_ISO_Level3_Lock
+                | keysym::XK_Mode_switch
+        ))
     })();
     unsafe { xlib::XCloseDisplay(display) };
     result
@@ -948,14 +950,9 @@ fn try_start_server_(desktop: Option<&Desktop>) -> ResultType<Option<Child>> {
             if !desktop.dbus.is_empty() {
                 envs.push(("DBUS_SESSION_BUS_ADDRESS", desktop.dbus.clone()));
             }
-            if let Ok(forced_display_server) =
-                std::env::var("RUSTDESK_FORCED_DISPLAY_SERVER")
-            {
+            if let Ok(forced_display_server) = std::env::var("RUSTDESK_FORCED_DISPLAY_SERVER") {
                 if !forced_display_server.is_empty() {
-                    envs.push((
-                        "RUSTDESK_FORCED_DISPLAY_SERVER",
-                        forced_display_server,
-                    ));
+                    envs.push(("RUSTDESK_FORCED_DISPLAY_SERVER", forced_display_server));
                 }
             }
 
@@ -2088,7 +2085,8 @@ mod xrandr_tests {
 
     #[test]
     fn output_name_does_not_match_inside_another_name() {
-        let xrandr_output = "Screen 0: minimum 320 x 200, current 4480 x 1440, maximum 16384 x 16384
+        let xrandr_output =
+            "Screen 0: minimum 320 x 200, current 4480 x 1440, maximum 16384 x 16384
 eDP-1 connected primary 1920x1080+0+0 (normal left inverted right x axis y axis) 309mm x 174mm
  1920x1080 60.01*+ 59.97
  1280x720 60.00
@@ -2545,10 +2543,7 @@ mod desktop {
                 // Xwayland display and xauth may not be available in a short time after login.
                 // Avoid scanning processes on X11, where Xwayland discovery cannot provide any
                 // useful session information.
-                if self.is_wayland()
-                    && !self.is_login_wayland()
-                    && is_xwayland_running(&self.uid)
-                {
+                if self.is_wayland() && !self.is_login_wayland() && is_xwayland_running(&self.uid) {
                     self.get_display_xauth_xwayland();
                 } else if self.is_wayland() {
                     self.get_display_xauth_wayland();
@@ -2660,11 +2655,8 @@ impl SessionIdleInhibit {
         let mut refused = Vec::new();
         for target in SESSION_INHIBIT_TARGETS {
             let res: Result<(u32,), dbus::Error> = {
-                let proxy = conn.with_proxy(
-                    target.dest,
-                    target.path,
-                    std::time::Duration::from_secs(3),
-                );
+                let proxy =
+                    conn.with_proxy(target.dest, target.path, std::time::Duration::from_secs(3));
                 if target.gnome_shape {
                     // Inhibit(s app_id, u xid, s reason, u flags) -> u cookie; xid 0 = no window.
                     proxy.method_call(

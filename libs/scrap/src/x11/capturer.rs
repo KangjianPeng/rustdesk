@@ -1,7 +1,10 @@
 use super::ffi::*;
 use super::Display;
 use hbb_common::{libc, log};
-use std::{io, ptr, slice, time::{Duration, Instant}};
+use std::{
+    io, ptr, slice,
+    time::{Duration, Instant},
+};
 
 pub struct Capturer {
     display: Display,

@@ -133,7 +133,10 @@ async fn another_connection_cannot_supply_this_streams_token(
     );
 }
 
-async fn sent_token(trust: &mut crate::trusted_devices::client::Session, request: &Message) -> Vec<u8> {
+async fn sent_token(
+    trust: &mut crate::trusted_devices::client::Session,
+    request: &Message,
+) -> Vec<u8> {
     trust
         .login(request.clone())
         .await

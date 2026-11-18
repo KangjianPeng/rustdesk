@@ -1289,7 +1289,8 @@ impl TransferJob {
         if self.is_download() {
             self.confirm_download(r);
             // Open receiver resume streams in write() so validation errors reach the caller.
-            if matches!(r.union, Some(file_transfer_send_confirm_request::Union::OffsetBlk(offset)) if offset > 0) {
+            if matches!(r.union, Some(file_transfer_send_confirm_request::Union::OffsetBlk(offset)) if offset > 0)
+            {
                 return true;
             }
         }

@@ -2,6 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::client::*;
 use crate::port_forward_mux::{Claim, Tunnel, CHANNEL_WINDOW};
+use base::message_proto::*;
 use hbb_common::{
     allow_err, bail,
     config::READ_TIMEOUT,
@@ -14,7 +15,6 @@ use hbb_common::{
     tokio_util::codec::{BytesCodec, Framed},
     ResultType, Stream,
 };
-use base::message_proto::*;
 
 fn run_rdp(port: u16, name: &str) {
     std::process::Command::new("cmdkey")
@@ -177,7 +177,10 @@ async fn connect_and_login(
     let ((mut stream, direct, pk, _kcp, _stream_type), (feedback, rendezvous_server)) =
         Client::start(id, key, token, conn_type, interface.clone()).await?;
     let mut trust = crate::trusted_devices::client::Session::new(
-        &interface.get_lch().read().unwrap(), stream.is_secured(), pk.as_deref())?;
+        &interface.get_lch().read().unwrap(),
+        stream.is_secured(),
+        pk.as_deref(),
+    )?;
     interface.update_direct(Some(direct));
     if !stream.is_secured() && !crate::common::is_direct_ip_access(id) {
         if !confirm_insecure_connection(&interface, ui_receiver).await {
@@ -265,7 +268,6 @@ async fn connect_and_login(
     Ok(Some(stream))
 }
 
-
 /// A mapping's login is built from the window's shared handler:
 /// `create_login_msg` reads `port_forward` and `port_forward_multiplex`,
 /// `handle_login_from_ui` reads `hash`. Mappings log in concurrently, so each
@@ -309,10 +311,32 @@ async fn hash_arrived(
 ) -> bool {
     match pending_login {
         Some(login) => {
-            login_from_ui(interface, &hash, login, remote_host, remote_port, mux, trust, stream).await;
+            login_from_ui(
+                interface,
+                &hash,
+                login,
+                remote_host,
+                remote_port,
+                mux,
+                trust,
+                stream,
+            )
+            .await;
             true
         }
-        None => login_with_hash(interface, password, hash, remote_host, remote_port, mux, trust, stream).await,
+        None => {
+            login_with_hash(
+                interface,
+                password,
+                hash,
+                remote_host,
+                remote_port,
+                mux,
+                trust,
+                stream,
+            )
+            .await
+        }
     }
 }
 
@@ -366,7 +390,21 @@ async fn establish_tunnel(
 ) -> bool {
     let mut forward = Framed::new(forward, BytesCodec::new());
     let mut close_port_forward = false;
-    match connect_and_login_mux(id, password, ui_receiver, interface.clone(), &mut forward, key, token, is_rdp, &mut close_port_forward, remote_host, remote_port).await {
+    match connect_and_login_mux(
+        id,
+        password,
+        ui_receiver,
+        interface.clone(),
+        &mut forward,
+        key,
+        token,
+        is_rdp,
+        &mut close_port_forward,
+        remote_host,
+        remote_port,
+    )
+    .await
+    {
         Ok(Some(outcome)) if outcome.mux => {
             let handle = tunnel.set_muxed(outcome.stream, interface.clone());
             if !outcome.local_eof {
@@ -424,7 +462,10 @@ async fn connect_and_login_mux(
     let ((mut stream, direct, pk, _kcp, _stream_type), (feedback, rendezvous_server)) =
         Client::start(id, key, token, conn_type, interface.clone()).await?;
     let mut trust = crate::trusted_devices::client::Session::new(
-        &interface.get_lch().read().unwrap(), stream.is_secured(), pk.as_deref())?;
+        &interface.get_lch().read().unwrap(),
+        stream.is_secured(),
+        pk.as_deref(),
+    )?;
     interface.update_direct(Some(direct));
     if !stream.is_secured() && !crate::common::is_direct_ip_access(id) {
         if !confirm_insecure_connection(&interface, ui_receiver).await {
@@ -548,11 +589,17 @@ struct LoginOutcome {
 }
 
 fn peer_supports_mux(pi: &PeerInfo) -> bool {
-    pi.features.as_ref().map(|f| f.port_forward_mux).unwrap_or(false)
+    pi.features
+        .as_ref()
+        .map(|f| f.port_forward_mux)
+        .unwrap_or(false)
 }
 
 /// `into_inner()` would drop bytes the codec pulled but never yielded.
-fn take_socket(forward: Framed<TcpStream, BytesCodec>, mut prebuf: Vec<u8>) -> (TcpStream, Vec<u8>) {
+fn take_socket(
+    forward: Framed<TcpStream, BytesCodec>,
+    mut prebuf: Vec<u8>,
+) -> (TcpStream, Vec<u8>) {
     let parts = forward.into_parts();
     prebuf.extend_from_slice(&parts.read_buf);
     (parts.io, prebuf)
@@ -560,8 +607,8 @@ fn take_socket(forward: Framed<TcpStream, BytesCodec>, mut prebuf: Vec<u8>) -> (
 
 /// The controlling side's `enable-port-forward-mux`: on unless set to `N`.
 pub fn mux_enabled() -> bool {
-    use hbb_common::config::{option2bool, LocalConfig};
     use base::config::keys;
+    use hbb_common::config::{option2bool, LocalConfig};
     option2bool(
         keys::OPTION_ENABLE_PORT_FORWARD_MUX,
         &LocalConfig::get_option(keys::OPTION_ENABLE_PORT_FORWARD_MUX),
@@ -620,7 +667,13 @@ mod login_tests {
         }
         fn handle_peer_info(&self, _pi: PeerInfo) {}
         fn set_multiple_windows_session(&self, _sessions: Vec<WindowsSession>) {}
-        async fn handle_hash(&self, pass: &str, hash: Hash, trust: &mut crate::trusted_devices::client::Session, peer: &mut Stream) -> bool {
+        async fn handle_hash(
+            &self,
+            pass: &str,
+            hash: Hash,
+            trust: &mut crate::trusted_devices::client::Session,
+            peer: &mut Stream,
+        ) -> bool {
             sleep(self.pause).await;
             crate::client::handle_hash(self.lc.clone(), pass, hash, self, trust, peer).await
         }
@@ -642,7 +695,8 @@ mod login_tests {
                 trust,
                 peer,
             )
-            .await.unwrap();
+            .await
+            .unwrap();
         }
         async fn handle_test_delay(&self, _t: TestDelay, _peer: &mut Stream) {}
         fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>> {
@@ -735,10 +789,32 @@ mod login_tests {
             let (mut a, mut a_peer) = loopback().await;
             let (mut b, mut b_peer) = loopback().await;
             // A's hash arrived last, so it is the one the handler holds.
-            assert!(login_with_hash(&ui, "pw", hash("a"), "a", 1, false, &mut Default::default(), &mut a).await);
+            assert!(
+                login_with_hash(
+                    &ui,
+                    "pw",
+                    hash("a"),
+                    "a",
+                    1,
+                    false,
+                    &mut Default::default(),
+                    &mut a
+                )
+                .await
+            );
             login_at(&mut a_peer).await;
             let typed = (String::new(), String::new(), "pw".to_owned(), false);
-            login_from_ui(&ui, &hash("b"), typed, "b", 2, false, &mut Default::default(), &mut b).await;
+            login_from_ui(
+                &ui,
+                &hash("b"),
+                typed,
+                "b",
+                2,
+                false,
+                &mut Default::default(),
+                &mut b,
+            )
+            .await;
             let lr = login_at(&mut b_peer).await;
             assert_eq!(lr.password, digest("b"));
             assert_eq!(target(&lr), ("b".to_owned(), 2));
@@ -754,7 +830,19 @@ mod login_tests {
         rt.block_on(async {
             let ui = window();
             let (mut a, mut a_peer) = loopback().await;
-            assert!(login_with_hash(&ui, "pw", hash("a"), "a", 1, true, &mut Default::default(), &mut a).await);
+            assert!(
+                login_with_hash(
+                    &ui,
+                    "pw",
+                    hash("a"),
+                    "a",
+                    1,
+                    true,
+                    &mut Default::default(),
+                    &mut a
+                )
+                .await
+            );
             assert!(login_at(&mut a_peer).await.port_forward().multiplex);
         });
     }

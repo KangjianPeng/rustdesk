@@ -365,7 +365,9 @@ fn transform_degrees(t: sctk::reexports::client::protocol::wl_output::Transform)
         Transform::_90 => 90,
         Transform::_180 => 180,
         Transform::_270 => 270,
-        Transform::Flipped | Transform::Flipped90 | Transform::Flipped180
+        Transform::Flipped
+        | Transform::Flipped90
+        | Transform::Flipped180
         | Transform::Flipped270 => {
             static FLIPPED_WARNED: std::sync::atomic::AtomicBool =
                 std::sync::atomic::AtomicBool::new(false);
