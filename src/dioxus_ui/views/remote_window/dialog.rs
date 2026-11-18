@@ -11,9 +11,9 @@ pub(super) fn SessionDialog() -> Element {
     let mut remember = state.remember_password;
     let authenticating = status.password_required || status.two_factor_required;
     rsx! {
-        div { class: "absolute inset-0 z-30 flex items-center justify-center bg-black/50 p-4",
+        div { class: "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4",
             form {
-                class: "flex w-full max-w-[420px] flex-col gap-4 rounded-xl border bg-card p-6 text-sm text-card-foreground shadow-lg",
+                class: "flex max-h-full w-full max-w-[420px] flex-col gap-4 overflow-auto rounded-xl border bg-card p-6 text-sm text-card-foreground shadow-lg",
                 role: "dialog", aria_modal: "true", aria_label: tr("Remote connection"),
                 onsubmit: move |event| {
                     event.prevent_default();
@@ -33,7 +33,7 @@ pub(super) fn SessionDialog() -> Element {
                     }
                 },
                 h2 { class: "text-lg font-medium", if status.password_required { {tr("Password Required")} } else if status.two_factor_required { {tr("Two-factor code")} } else { {tr(&status.status)} } }
-                if !status.message.is_empty() { p { class: "text-rd-muted [overflow-wrap:anywhere]", {tr(&status.message)} } }
+                if !status.message.is_empty() { p { class: "text-muted-foreground [overflow-wrap:anywhere]", {tr(&status.message)} } }
                 if status.password_required {
                     Input {
                         css_class: "w-full",
@@ -41,7 +41,7 @@ pub(super) fn SessionDialog() -> Element {
                         placeholder: "Password", value: password(),
                         oninput: move |event: FormEvent| password.set(event.value()),
                     }
-                    label { class: "flex items-center gap-2 text-xs text-rd-muted",
+                    label { class: "flex items-center gap-2 text-xs text-muted-foreground",
                         Checkbox { checked: remember(), aria_label: "Remember password", on_checked_change: move |value| remember.set(value) }
                         {tr("Remember password")}
                     }
@@ -52,7 +52,7 @@ pub(super) fn SessionDialog() -> Element {
                         oninput: move |event: FormEvent| code.set(event.value()),
                     }
                 } else if !status.retry_available && status.status != "Connection error" {
-                    span { class: "mx-auto h-6 w-6 animate-spin rounded-full border-2 border-rd-accent border-t-transparent" }
+                    span { class: "mx-auto h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" }
                 }
                 div { class: "flex justify-end gap-2",
                     Button { button_type: "button",

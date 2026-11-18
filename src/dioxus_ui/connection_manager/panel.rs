@@ -22,11 +22,11 @@ pub(crate) fn Panel(#[props(default)] standalone: bool) -> Element {
         return rsx! {};
     }
     rsx! {
-        details { class: "max-h-[calc(100vh-64px)] overflow-y-auto bg-rd-window p-5 text-[#eee] [&_summary]:mb-4 [&_summary]:cursor-pointer [&_summary]:text-xl [&_h2]:mb-4 [&_h2]:text-xl [&_h3]:m-0 [&_h3]:text-base [&_>summary]:mb-4", open: true,
+        details { class: "max-h-[calc(100vh-64px)] overflow-y-auto bg-background p-5 text-foreground [&_summary]:mb-4 [&_summary]:cursor-pointer [&_summary]:text-xl [&_h2]:mb-4 [&_h2]:text-xl [&_h3]:m-0 [&_h3]:text-base [&_>summary]:mb-4", open: true,
             summary { "Incoming connections" }
             if snapshot.needs_deploy {
                 p { "This device requires deployment before it can accept connections." }
-                form { class: "mt-3 flex gap-2 [&>.inline-flex:first-child]:min-w-0 [&>.inline-flex:first-child]:flex-1 [&_input]:rounded-[5px] [&_input]:border [&_input]:border-[#515258] [&_input]:bg-[#303137] [&_input]:p-2 [&_input]:text-white [&>.inline-flex:last-child]:min-h-9 [&>.inline-flex:last-child]:rounded-[5px] [&>.inline-flex:last-child]:border [&>.inline-flex:last-child]:border-[#515258] [&>.inline-flex:last-child]:bg-[#0071ff] [&>.inline-flex:last-child]:text-white [&>.inline-flex:last-child>button]:min-h-9 [&>.inline-flex:last-child>button]:px-[14px] [&>.inline-flex:last-child>button]:py-2", onsubmit: move |event| {
+                form { class: "mt-3 flex gap-2 [&>.inline-flex:first-child]:min-w-0 [&>.inline-flex:first-child]:flex-1 [&_input]:rounded-[5px] [&_input]:border [&_input]:p-2 [&>.inline-flex:last-child]:min-h-9 [&>.inline-flex:last-child]:rounded-[5px] [&>.inline-flex:last-child]:border [&>.inline-flex:last-child>button]:min-h-9 [&>.inline-flex:last-child>button]:px-[14px] [&>.inline-flex:last-child>button]:py-2", onsubmit: move |event| {
                     event.prevent_default();
                     if deploying() || deploy_token().trim().is_empty() { return; }
                     let token = deploy_token().trim().to_owned();

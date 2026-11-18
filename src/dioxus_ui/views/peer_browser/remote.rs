@@ -28,13 +28,13 @@ pub(in crate::dioxus_ui::views) fn RemoteDesktop(
         div { class: "flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[#090a0b]",
             class: if standalone { "absolute inset-0" } else { "" },
             if !standalone {
-            header { class: "flex min-h-10 shrink-0 items-center gap-3 border-b border-[#303238] bg-rd-surface px-3 text-sm text-[#e8e9eb]",
+            header { class: "flex min-h-10 shrink-0 items-center gap-3 border-b border-border bg-card px-3 text-sm text-foreground",
                 span { class: "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap", if status.peer_name.is_empty() { {tr("Remote desktop")} } else { "{status.peer_name}" } }
                 if !status.message.is_empty() {
-                    span { class: "hidden max-w-[35%] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-rd-muted min-[841px]:inline", "{status.message}" }
+                    span { class: "hidden max-w-[35%] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground min-[841px]:inline", "{status.message}" }
                 }
                 Button {
-                    css_class: "h-7 rounded-md bg-[#8e4650] px-3 text-xs text-white hover:bg-[#a95662]",
+                    css_class: "h-7 rounded-md bg-destructive px-3 text-xs text-white hover:bg-destructive/90",
                     variant: ButtonVariant::Destructive,
                     size: ButtonSize::Sm,
                     onclick: move |_| {
@@ -58,13 +58,13 @@ pub(in crate::dioxus_ui::views) fn RemoteDesktop(
                 if cfg!(not(any(target_os = "android", target_os = "ios"))) {
                     {desktop_canvas(standalone && matches!(view_style.as_str(), "original" | "custom"), if standalone && view_style == "custom" { custom_scale } else { 100 })}
                 } else if status.frame_data_uri.is_empty() {
-                    div { class: "m-auto flex flex-col items-center gap-2 text-sm text-rd-muted",
-                        span { class: "h-5 w-5 animate-spin rounded-full border-2 border-[#5d91e8] border-t-transparent" }
+                    div { class: "m-auto flex flex-col items-center gap-2 text-sm text-muted-foreground",
+                        span { class: "h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" }
                         span { {tr("Connected, waiting for image...")} }
                     }
                 } else {
                     img {
-                        class: if standalone && view_style == "original" { "m-auto block max-h-none max-w-none shrink-0 bg-[#090a0b] [touch-action:none] [user-select:none]" } else if standalone { "m-auto block h-auto max-h-full w-auto max-w-full shrink-0 bg-[#090a0b] object-contain [touch-action:none] [user-select:none]" } else { "block h-auto max-h-full w-auto max-w-full rounded-[3px] border border-[#414348] bg-[#090a0b] object-contain [touch-action:none] [user-select:none]" },
+                        class: if standalone && view_style == "original" { "m-auto block max-h-none max-w-none shrink-0 bg-[#090a0b] [touch-action:none] [user-select:none]" } else if standalone { "m-auto block h-auto max-h-full w-auto max-w-full shrink-0 bg-[#090a0b] object-contain [touch-action:none] [user-select:none]" } else { "block h-auto max-h-full w-auto max-w-full rounded-[3px] border border-border bg-[#090a0b] object-contain [touch-action:none] [user-select:none]" },
                         src: "{status.frame_data_uri}",
                         width: "{status.width}",
                         height: "{status.height}",
@@ -123,10 +123,10 @@ pub(in crate::dioxus_ui::views) fn RemoteDesktop(
                 }
             }
             if !standalone && status.displays.len() > 1 {
-                div { class: "flex shrink-0 flex-wrap gap-[7px] border-t border-[#303238] bg-rd-surface p-2",
+                div { class: "flex shrink-0 flex-wrap gap-[7px] border-t border-border bg-card p-2",
                     for (index, display) in status.displays.iter().enumerate() {
                         Button {
-                            css_class: if status.current_display == index as i32 { "min-h-[30px] rounded border border-[#6696df] bg-[#36588e] px-2.5 text-[11px] text-white" } else { "min-h-[30px] rounded border border-[#4b4d52] bg-[#303135] px-2.5 text-[11px] text-[#c8c9cb]" },
+                            css_class: if status.current_display == index as i32 { "min-h-[30px] rounded border border-primary bg-primary px-2.5 text-[11px] text-primary-foreground" } else { "min-h-[30px] rounded border border-border bg-secondary px-2.5 text-[11px] text-foreground" },
                             variant: ButtonVariant::Secondary,
                             size: ButtonSize::Sm,
                             disabled: !display.online,

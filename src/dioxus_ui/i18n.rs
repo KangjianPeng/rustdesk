@@ -140,7 +140,7 @@ pub(super) fn LanguageSetting() -> Element {
                     SelectOption { value: "zh-tw", "繁體中文" }
                 } }
             }
-            if !error().is_empty() { p { role: "alert", class: "mt-2 text-xs text-red-400", "{error}" } }
+            if !error().is_empty() { p { role: "alert", class: "mt-2 text-xs text-destructive", "{error}" } }
         }
     }
 }

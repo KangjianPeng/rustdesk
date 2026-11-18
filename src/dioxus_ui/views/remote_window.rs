@@ -36,10 +36,10 @@ pub(super) fn RemoteWindow() -> Element {
         document::Title { "{state.peer_id} - RustDesk" }
         div { class: "flex min-h-0 flex-1 flex-col overflow-hidden bg-[#090a0b]",
             if !fullscreen() {
-                header { class: "flex h-8 shrink-0 items-center border-b border-[#404040] bg-rd-surface text-xs text-[#ececec] select-none",
+                header { class: "flex h-8 shrink-0 items-center border-b border-border bg-card text-xs text-foreground select-none",
                     div {
-                        class: "flex h-full min-w-0 max-w-[320px] items-center gap-2 border-r border-b-2 border-r-[#404040] border-b-rd-accent bg-[#303137] px-3",
-                        Monitor { class: "h-4 w-4 shrink-0 text-rd-accent" }
+                        class: "flex h-full min-w-0 max-w-[320px] items-center gap-2 border-r border-b-2 border-r-border border-b-primary bg-accent px-3",
+                        Monitor { class: "h-4 w-4 shrink-0 text-primary" }
                         span { class: "min-w-0 truncate", onmousedown: move |_| dioxus::desktop::window().drag(), "{state.peer_id}" }
                         Button {
                             css_class: "ml-2 h-6 w-6 p-0",
@@ -52,7 +52,7 @@ pub(super) fn RemoteWindow() -> Element {
                     div { class: "h-full min-w-6 flex-1", onmousedown: move |_| dioxus::desktop::window().drag() }
                     for (label, icon) in [("Minimize", 0), ("Maximize", 1), ("Close", 2)] {
                         Button {
-                            css_class: "h-full w-8 shrink-0 rounded-none p-0 hover:bg-[#3a3b40]",
+                            css_class: "h-full w-8 shrink-0 rounded-none p-0 hover:bg-accent",
                             title: label, aria_label: label,
                             variant: ButtonVariant::Ghost, size: ButtonSize::IconSm,
                             onclick: move |_| match icon {

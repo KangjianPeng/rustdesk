@@ -37,12 +37,14 @@ impl Edge {
             Self::Right => "grid-rows-[minmax(0,var(--dock-before))_minmax(0,max-content)_minmax(0,var(--dock-after))] grid-cols-[minmax(0,1fr)_auto]",
         }
     }
-    pub fn menu_class(self) -> &'static str {
+    pub fn menu_class(self, fraction: f64) -> &'static str {
         match self {
             Self::Top => "top-full mt-1",
             Self::Bottom => "bottom-full mb-1",
-            Self::Left => "top-0 left-full ml-1",
-            Self::Right => "top-0 right-full mr-1",
+            Self::Left if fraction <= 0.5 => "top-0 left-full ml-1",
+            Self::Left => "bottom-0 left-full ml-1",
+            Self::Right if fraction <= 0.5 => "top-0 right-full mr-1",
+            Self::Right => "bottom-0 right-full mr-1",
         }
     }
 }
@@ -196,5 +198,13 @@ mod tests {
         assert_eq!(position((5.0, 300.0), true).edge, Edge::Left);
         assert_eq!(position((995.0, 300.0), true).edge, Edge::Right);
         assert_eq!(position((500.0, 5.0), true).fraction, 0.5);
+    }
+
+    #[test]
+    fn side_toolbar_menus_open_toward_the_available_vertical_space() {
+        assert_eq!(Edge::Left.menu_class(0.25), "top-0 left-full ml-1");
+        assert_eq!(Edge::Left.menu_class(0.75), "bottom-0 left-full ml-1");
+        assert_eq!(Edge::Right.menu_class(0.25), "top-0 right-full mr-1");
+        assert_eq!(Edge::Right.menu_class(0.75), "bottom-0 right-full mr-1");
     }
 }

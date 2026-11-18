@@ -1497,16 +1497,12 @@ fn check_qos(
     *spf = video_qos.spf();
     if *ratio != video_qos.ratio() {
         *ratio = video_qos.ratio();
-        if encoder.support_changing_quality() {
-            allow_err!(encoder.set_quality(*ratio));
-            video_qos.store_bitrate(encoder.bitrate());
-        } else {
-            // Now only vaapi doesn't support changing quality
-            if !video_qos.in_vbr_state() && !video_qos.latest_quality().is_custom() {
-                log::info!("switch to change quality");
-                bail!("SWITCH");
-            }
+        if !encoder.support_changing_quality() {
+            log::info!("switch to apply quality");
+            bail!("SWITCH");
         }
+        allow_err!(encoder.set_quality(*ratio));
+        video_qos.store_bitrate(encoder.bitrate());
     }
     if client_record != video_qos.record() {
         log::info!("switch due to record changed");

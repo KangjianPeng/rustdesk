@@ -19,12 +19,12 @@ pub(super) fn ClientCard(
         "Waiting for your approval"
     };
     rsx! {
-        Card { css_class: "my-3 block [overflow-wrap:anywhere] rounded-lg border border-[#48494e] p-4",
+        Card { css_class: "my-3 block [overflow-wrap:anywhere] rounded-lg border border-border p-4",
             h3 { class: "text-base", "{client.name} ({client.peer_id})" }
             p { role: "status", "{status}" }
             if client.is_file_transfer { p { "File transfer" } }
             if client.is_terminal { p { "Terminal" } }
-            div { class: "flex flex-wrap gap-2 [&>.inline-flex]:min-h-9 [&>.inline-flex]:rounded-[5px] [&>.inline-flex]:border [&>.inline-flex]:border-[#515258] [&>.inline-flex]:bg-[#0071ff] [&>.inline-flex]:text-white [&>.inline-flex>button]:min-h-9 [&>.inline-flex>button]:px-[14px] [&>.inline-flex>button]:py-2 [&>.inline-flex.cm-destructive]:bg-[#b3261e]",
+            div { class: "flex flex-wrap gap-2 [&>.inline-flex]:min-h-9 [&>.inline-flex]:rounded-[5px] [&>.inline-flex]:border [&>.inline-flex>button]:min-h-9 [&>.inline-flex>button]:px-[14px] [&>.inline-flex>button]:py-2",
                 if !client.disconnected && !client.authorized {
                     Button { onclick: move |_| { spawn(async move {
                         if !allow_action(id).await { return; }
@@ -33,7 +33,7 @@ pub(super) fn ClientCard(
                     }); }, "Accept" }
                 }
                 if !client.disconnected {
-                    Button { css_class: "bg-[#b3261e]", variant: ButtonVariant::Destructive, onclick: move |_| {
+                    Button { variant: ButtonVariant::Destructive, onclick: move |_| {
                         spawn(async move { if allow_action(id).await { ui_cm_interface::close(id); } });
                     }, if client.authorized { "Disconnect" } else { "Reject" } }
                 } else {
@@ -46,7 +46,7 @@ pub(super) fn ClientCard(
             }
             if !messages.is_empty() { div { class: "mt-3 max-h-[200px] overflow-y-auto [&_p]:whitespace-pre-wrap", role: "log", for text in messages { p { "{text}" } } } }
             if client.authorized && !client.disconnected {
-                form { class: "mt-3 flex gap-2 [&>.inline-flex:first-child]:min-w-0 [&>.inline-flex:first-child]:flex-1 [&_input]:rounded-[5px] [&_input]:border [&_input]:border-[#515258] [&_input]:bg-[#303137] [&_input]:p-2 [&_input]:text-white [&>.inline-flex:last-child]:min-h-9 [&>.inline-flex:last-child]:rounded-[5px] [&>.inline-flex:last-child]:border [&>.inline-flex:last-child]:border-[#515258] [&>.inline-flex:last-child]:bg-[#0071ff] [&>.inline-flex:last-child]:text-white [&>.inline-flex:last-child>button]:min-h-9 [&>.inline-flex:last-child>button]:px-[14px] [&>.inline-flex:last-child>button]:py-2", onsubmit: move |event| {
+                form { class: "mt-3 flex gap-2 [&>.inline-flex:first-child]:min-w-0 [&>.inline-flex:first-child]:flex-1 [&_input]:rounded-[5px] [&_input]:border [&_input]:p-2 [&>.inline-flex:last-child]:min-h-9 [&>.inline-flex:last-child]:rounded-[5px] [&>.inline-flex:last-child]:border [&>.inline-flex:last-child>button]:min-h-9 [&>.inline-flex:last-child>button]:px-[14px] [&>.inline-flex:last-child>button]:py-2", onsubmit: move |event| {
                     event.prevent_default();
                     let text = draft().trim().to_owned();
                     if !text.is_empty() { ui_cm_interface::send_chat(id, text.clone()); push_message(id, format!("You: {text}")); draft.set(String::new()); }

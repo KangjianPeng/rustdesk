@@ -45,7 +45,7 @@ pub(super) fn RemoteSurface(original: bool, scale: u16) -> Element {
                     }
                 });
             },
-            if !failure().is_empty() { div { class: "m-auto p-4 text-sm text-red-400", "{failure}" } }
+            if !failure().is_empty() { div { class: "m-auto p-4 text-sm text-destructive", "{failure}" } }
         }
     }
 }

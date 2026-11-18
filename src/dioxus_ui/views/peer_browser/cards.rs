@@ -17,14 +17,6 @@ pub(super) fn PeerCard(peer: PeerCardData, selected: bool, mut peer_menu: Signal
     let display_name = peer_display_name(&peer);
     let subtitle = peer_subtitle(&peer);
     let grid = view_mode == "grid";
-    let color = peer.id.encode_utf16().chain(peer.platform.encode_utf16())
-        .fold(0_u32, |hash, code| hash.wrapping_mul(31).wrapping_add(u32::from(code)));
-    let background = format!("data:image/svg+xml;base64,{}", STANDARD.encode(format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" preserveAspectRatio="none"><rect width="100%" height="100%" fill="#{:06x}" fill-opacity="0.5"/></svg>"##,
-        if grid { 216 } else { 42 },
-        if grid { 100 } else if view_mode == "tile" { 38 } else { 41 },
-        color & 0xff7fff,
-    )));
     rsx! {
         div {
             role: "listitem",
@@ -33,37 +25,36 @@ pub(super) fn PeerCard(peer: PeerCardData, selected: bool, mut peer_menu: Signal
             ondoubleclick: move |_| start_session(session, id.clone(), String::new(), Vec::new(), ui_state),
             div {
                 class: match (view_mode.as_str(), selected) {
-                    ("grid", true) => "box-border flex h-[140px] w-[220px] flex-col overflow-hidden rounded-[14px] border-2 border-solid border-rd-accent bg-rd-surface",
-                    ("grid", false) => "box-border flex h-[140px] w-[220px] flex-col overflow-hidden rounded-[14px] border-2 border-solid border-transparent bg-rd-surface hover:border-rd-accent",
-                    ("tile", true) => "box-border flex h-[42px] w-[220px] overflow-hidden rounded-[5px] border-2 border-solid border-rd-accent bg-rd-surface",
-                    ("tile", false) => "box-border flex h-[42px] w-[220px] overflow-hidden rounded-[5px] border-2 border-solid border-transparent bg-rd-surface hover:border-rd-accent",
-                    (_, true) => "box-border flex h-[45px] w-full overflow-hidden rounded-[5px] border-2 border-solid border-rd-accent bg-rd-surface",
-                    _ => "box-border flex h-[45px] w-full overflow-hidden rounded-[5px] border-2 border-solid border-transparent bg-rd-surface hover:border-rd-accent",
+                    ("grid", true) => "box-border flex h-[140px] w-[220px] flex-col overflow-hidden rounded-[14px] border-2 border-solid border-primary bg-card",
+                    ("grid", false) => "box-border flex h-[140px] w-[220px] flex-col overflow-hidden rounded-[14px] border-2 border-solid border-transparent bg-card hover:border-ring",
+                    ("tile", true) => "box-border flex h-[42px] w-[220px] overflow-hidden rounded-[5px] border-2 border-solid border-primary bg-card",
+                    ("tile", false) => "box-border flex h-[42px] w-[220px] overflow-hidden rounded-[5px] border-2 border-solid border-transparent bg-card hover:border-ring",
+                    (_, true) => "box-border flex h-[45px] w-full overflow-hidden rounded-[5px] border-2 border-solid border-primary bg-card",
+                    _ => "box-border flex h-[45px] w-full overflow-hidden rounded-[5px] border-2 border-solid border-transparent bg-card hover:border-ring",
                 },
-                div { class: if grid { "relative flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-1" } else { "relative flex w-[42px] shrink-0 items-center justify-center" },
-                    img { class: "absolute inset-0 z-0 h-full w-full object-fill", src: "{background}", alt: "" }
+                div { class: if grid { "relative flex min-h-0 flex-1 flex-col items-center justify-center gap-1 bg-muted px-1" } else { "relative flex w-[42px] shrink-0 items-center justify-center bg-muted" },
                     img {
                         src: "{peer_platform_asset(&peer.platform)}", alt: "{peer.platform}",
                         class: if grid { "relative z-10 h-[60px] w-[60px] shrink-0 object-contain" } else { "relative z-10 h-[30px] w-[30px] object-contain" },
                     }
                     if grid && !subtitle.is_empty() {
-                        span { class: "relative z-10 block w-full min-w-0 truncate text-center text-xs text-[#ffffffb3]", title: "{subtitle}", "{subtitle}" }
+                        span { class: "relative z-10 block w-full min-w-0 truncate text-center text-xs text-muted-foreground", title: "{subtitle}", "{subtitle}" }
                     }
                 }
                 div { class: if grid { "box-border flex h-[36px] shrink-0 items-center px-2.5" } else { "box-border flex min-w-0 flex-1 items-center pl-2" },
                     div { class: "min-w-0 flex-1",
-                        div { class: "flex min-w-0 items-center gap-2 text-sm text-[#ececec]",
-                            span { class: if peer.online { "h-2 w-2 shrink-0 rounded-full bg-[#42c49c]" } else { "h-2 w-2 shrink-0 rounded-full bg-[#777a7f]" } }
+                        div { class: "flex min-w-0 items-center gap-2 text-sm text-foreground",
+                            span { class: if peer.online { "h-2 w-2 shrink-0 rounded-full bg-success" } else { "h-2 w-2 shrink-0 rounded-full bg-muted-foreground" } }
                             span { class: "min-w-0 flex-1 truncate", title: "{display_name}", "{display_name}" }
                         }
                         if !grid && !subtitle.is_empty() {
-                            div { class: "mt-0.5 min-w-0 truncate text-[11px] leading-none text-[#9da0a6]", title: "{subtitle}", "{subtitle}" }
+                            div { class: "mt-0.5 min-w-0 truncate text-[11px] leading-none text-muted-foreground", title: "{subtitle}", "{subtitle}" }
                         }
                     }
                     div {
                         onmousedown: move |event| event.stop_propagation(),
                         Button {
-                            css_class: "h-7 w-6 shrink-0 bg-transparent p-0 text-[#aaaeb5]",
+                            css_class: "h-7 w-6 shrink-0 bg-transparent p-0 text-muted-foreground",
                             title: "More",
                             aria_label: format!("More actions for {}", peer.id),
                             variant: ButtonVariant::Ghost,
@@ -79,14 +70,14 @@ pub(super) fn PeerCard(peer: PeerCardData, selected: bool, mut peer_menu: Signal
             }
             if peer_menu() == peer.id {
                 div {
-                    class: if grid { "box-border absolute right-0 bottom-8 z-40 w-[190px] rounded-[5px] border border-solid border-[#4a4c51] bg-[#2b2c31] p-1 shadow-[0_6px_18px_#0008]" } else { "box-border absolute top-0 right-0 z-40 w-[190px] rounded-[5px] border border-solid border-[#4a4c51] bg-[#2b2c31] p-1 shadow-[0_6px_18px_#0008]" },
+                    class: if grid { "box-border absolute right-0 bottom-8 z-40 w-[190px] rounded-[5px] border border-solid border-border bg-popover p-1 shadow-[0_6px_18px_#0008]" } else { "box-border absolute top-0 right-0 z-40 w-[190px] rounded-[5px] border border-solid border-border bg-popover p-1 shadow-[0_6px_18px_#0008]" },
                     role: "menu",
                     onmousedown: move |event| event.stop_propagation(),
                     onkeydown: move |event: KeyboardEvent| {
                         if event.key() == Key::Escape { peer_menu.set(String::new()); }
                     },
                     Button {
-                        css_class: "box-border flex h-8 w-full items-center gap-2 rounded px-2 text-xs text-[#d0d1d3] hover:bg-[#3b5d91] justify-start gap-2",
+                        css_class: "box-border flex h-8 w-full items-center gap-2 rounded px-2 text-xs text-foreground hover:bg-accent justify-start gap-2",
                         variant: ButtonVariant::Ghost,
                         size: ButtonSize::Sm,
                         onclick: move |event: dioxus::prelude::MouseEvent| {
@@ -98,7 +89,7 @@ pub(super) fn PeerCard(peer: PeerCardData, selected: bool, mut peer_menu: Signal
                         {tr("Connect")}
                     }
                     Button {
-                        css_class: "box-border flex h-8 w-full items-center gap-2 rounded px-2 text-xs text-[#d0d1d3] hover:bg-[#3b5d91] justify-start gap-2",
+                        css_class: "box-border flex h-8 w-full items-center gap-2 rounded px-2 text-xs text-foreground hover:bg-accent justify-start gap-2",
                         variant: ButtonVariant::Ghost,
                         size: ButtonSize::Sm,
                         onclick: move |event: dioxus::prelude::MouseEvent| {
@@ -110,7 +101,7 @@ pub(super) fn PeerCard(peer: PeerCardData, selected: bool, mut peer_menu: Signal
                         {tr("Copy ID")}
                     }
                     Button {
-                        css_class: "box-border flex h-8 w-full items-center gap-2 rounded px-2 text-xs text-[#d0d1d3] hover:bg-[#3b5d91] justify-start gap-2",
+                        css_class: "box-border flex h-8 w-full items-center gap-2 rounded px-2 text-xs text-foreground hover:bg-accent justify-start gap-2",
                         variant: ButtonVariant::Ghost,
                         size: ButtonSize::Sm,
                         onclick: move |event: dioxus::prelude::MouseEvent| {

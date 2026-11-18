@@ -26,17 +26,17 @@ pub(super) fn ChatPanel(mut open: Signal<bool>) -> Element {
     rsx! {
         section { class: "absolute top-20 right-4 z-20 flex h-96 max-h-[calc(100%-96px)] w-80 max-w-[calc(100%-32px)] flex-col overflow-hidden rounded-lg border bg-card text-sm text-card-foreground shadow-lg", aria_label: tr("Chat"),
             onkeydown: move |event| if event.key() == Key::Escape { event.stop_propagation(); open.set(false); },
-            header { class: "flex h-10 shrink-0 items-center justify-between border-b border-[#48494e] px-3",
+            header { class: "flex h-10 shrink-0 items-center justify-between border-b border-border px-3",
                 span { {tr("Chat")} }
                 Button { css_class: "size-7", button_type: "button", variant: ButtonVariant::Ghost, size: ButtonSize::IconSm, title: "Close chat", aria_label: "Close chat", onclick: move |_| open.set(false), X { class: "size-4" } }
             }
             div { id: "remote-chat-messages", class: "flex min-h-0 flex-1 flex-col gap-2 overflow-auto overscroll-contain p-3", role: "log", aria_live: "polite", aria_relevant: "additions text",
-                if status.remote.chat.is_empty() { p { class: "text-xs text-rd-muted", {tr("No messages")} } }
+                if status.remote.chat.is_empty() { p { class: "text-xs text-muted-foreground", {tr("No messages")} } }
                 for message in status.remote.chat.iter() {
-                    p { class: if message.outgoing { "ml-6 self-end rounded bg-[#2864a8] px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]" } else { "mr-6 self-start rounded bg-[#383a40] px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]" }, "{message.text}" }
+                    p { class: if message.outgoing { "ml-6 self-end rounded bg-primary text-primary-foreground px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]" } else { "mr-6 self-start rounded bg-muted text-muted-foreground px-3 py-2 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]" }, "{message.text}" }
                 }
             }
-            form { class: "flex shrink-0 gap-2 border-t border-[#48494e] p-2",
+            form { class: "flex shrink-0 gap-2 border-t border-border p-2",
                 onsubmit: move |event| {
                     event.prevent_default();
                     let value = text();
@@ -89,7 +89,7 @@ fn QualityDetails(
         .bitrate
         .map_or_else(|| "—".to_owned(), |value| format!("{value} kb/s"));
     rsx! {
-        aside { class: "pointer-events-none absolute top-3 right-3 z-10 max-w-[calc(100%-24px)] rounded bg-black/70 px-3 py-2 text-xs leading-5 text-white [overflow-wrap:anywhere]", aria_label: tr("Quality monitor"),
+        aside { class: "pointer-events-none absolute top-3 right-3 z-10 max-w-[calc(100%-24px)] rounded bg-card/90 px-3 py-2 text-xs leading-5 text-card-foreground [overflow-wrap:anywhere]", aria_label: tr("Quality monitor"),
             p { "{remote.connection}" }
             p { "{width} × {height} · {fps} FPS · {remote.codec} {remote.chroma}" }
             p { "{tr(\"Speed\")}: {remote.speed} · {tr(\"Delay\")}: {delay}" }

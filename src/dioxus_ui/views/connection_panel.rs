@@ -38,7 +38,7 @@ pub(super) fn ConnectionPanel(mut suggestions_open: Signal<bool>) -> Element {
             h2 { class: "flex items-center gap-2 font-semibold",
                 {tr("Control Remote Desktop")}
                 span {
-                    class: "inline-flex h-4 w-4 shrink-0 items-center justify-center text-[#999]",
+                    class: "inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground",
                     title: tr("Enter the remote ID"),
                     CircleHelp { class: "block h-4 w-4 [&_svg]:block [&_svg]:size-full" }
                 }
@@ -86,14 +86,14 @@ pub(super) fn ConnectionPanel(mut suggestions_open: Signal<bool>) -> Element {
                                                     peer_id.set(format_remote_id(&selected_id));
                                                     suggestions_open.set(false);
                                                 },
-                                                span { class: if online { "h-2 w-2 shrink-0 self-center rounded-full bg-[#42c49c]" } else { "h-2 w-2 shrink-0 self-center rounded-full bg-[#777a7f]" } }
+                                                span { class: if online { "h-2 w-2 shrink-0 self-center rounded-full bg-success" } else { "h-2 w-2 shrink-0 self-center rounded-full bg-muted-foreground" } }
                                                 span { class: "block min-w-0 flex-1",
                                                     span { class: "block truncate text-xs", title: "{display_name}", "{display_name}" }
                                                     if !subtitle.is_empty() {
-                                                        span { class: "block truncate text-[11px] text-[#9da0a6]", title: "{subtitle}", "{subtitle}" }
+                                                        span { class: "block truncate text-[11px] text-muted-foreground", title: "{subtitle}", "{subtitle}" }
                                                     }
                                                     if display_name != suggested_id {
-                                                        span { class: "block truncate font-mono text-[11px] text-[#8a8d93]", title: "{suggested_id}", "{suggested_id}" }
+                                                        span { class: "block truncate font-mono text-[11px] text-muted-foreground", title: "{suggested_id}", "{suggested_id}" }
                                                     }
                                                 }
                                             }
@@ -217,10 +217,10 @@ pub(super) fn ConnectionPanel(mut suggestions_open: Signal<bool>) -> Element {
                 }
             }
             if !status.status.is_empty() {
-                p { class: "mt-[13px] text-center text-xs text-[#79a9ee]", {tr(&status.status)} }
+                p { class: "mt-[13px] text-center text-xs text-primary", {tr(&status.status)} }
             }
             if !status.message.is_empty() {
-                p { class: "mt-2 [overflow-wrap:anywhere] text-center text-[11px] text-rd-muted", {tr(&status.message)} }
+                p { class: "mt-2 [overflow-wrap:anywhere] text-center text-[11px] text-muted-foreground", {tr(&status.message)} }
             }
         }
     }

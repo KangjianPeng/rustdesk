@@ -107,7 +107,7 @@ fn Root() -> Element {
         document::Stylesheet { href: asset!("/assets/tailwind.css") }
         super::app::App {}
         if cfg!(target_os = "android") {
-            div { class: "fixed top-12 right-3 left-3 z-50 [&_.cm-panel]:max-h-[calc(100vh-64px)] [&_.cm-panel]:rounded-lg [&_.cm-panel]:border [&_.cm-panel]:border-[#48494e] [&_.cm-panel]:shadow-[0_8px_24px_#0008]", connection_manager::Panel {} }
+            div { class: "fixed top-12 right-3 left-3 z-50 [&_.cm-panel]:max-h-[calc(100vh-64px)] [&_.cm-panel]:rounded-lg [&_.cm-panel]:border [&_.cm-panel]:border-border [&_.cm-panel]:shadow-[0_8px_24px_#0008]", connection_manager::Panel {} }
         }
     }
 }

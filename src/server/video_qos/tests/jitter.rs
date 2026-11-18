@@ -103,6 +103,24 @@ fn viewers_confirm_congestion_independently() {
 }
 
 #[test]
+fn custom_fps_limit_applies_without_waiting_for_another_network_reply() {
+    let mut qos = stable_qos();
+
+    qos.user_custom_fps(1, 12);
+
+    assert_eq!(qos.fps(), 12);
+}
+
+#[test]
+fn auto_adjust_fps_limit_applies_without_waiting_for_another_network_reply() {
+    let mut qos = stable_qos();
+
+    qos.user_auto_adjust_fps(1, 15);
+
+    assert_eq!(qos.fps(), 15);
+}
+
+#[test]
 fn a_congested_viewer_does_not_lower_another_viewers_target() {
     let mut qos = stable_qos();
     qos.users.insert(2, UserData::default());

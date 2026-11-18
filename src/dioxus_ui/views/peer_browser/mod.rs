@@ -112,8 +112,8 @@ pub(super) fn PeerBrowser(peer_menu: Signal<String>) -> Element {
             }
             div { class: "my-3 min-h-0 flex-1 overflow-auto",
                 if displayed_peers.is_empty() {
-                    div { class: "flex flex-col items-center pt-[85px] text-[#7f8185] [&_p]:text-xs [&_p]:text-[#85878b]",
-                        div { class: "mb-2.5 grid h-11 w-11 place-items-center text-[#8c8e92]",
+                    div { class: "flex flex-col items-center pt-[85px] text-muted-foreground [&_p]:text-xs [&_p]:text-muted-foreground",
+                        div { class: "mb-2.5 grid h-11 w-11 place-items-center text-muted-foreground",
                             Frown { class: "block h-10 w-10 shrink-0 [&_svg]:block [&_svg]:size-full" }
                         }
                         p { {tr(empty_peers_label(&(peer_tab)()))} }

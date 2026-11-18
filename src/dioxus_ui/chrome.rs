@@ -23,7 +23,7 @@ pub(crate) fn AppChrome(
     #[cfg(not(target_os = "android"))]
     {
         return rsx! {
-            div { class: "box-border flex h-8 shrink-0 items-center border-0 border-b border-solid border-[#404040] bg-rd-surface select-none",
+            div { class: "box-border flex h-8 shrink-0 items-center border-0 border-b border-solid border-border bg-card select-none",
                 div { class: "flex h-8 min-w-0 flex-1 items-center",
                     div {
                         class: "box-border flex h-8 w-[31px] shrink-0 items-center pl-[5px] pr-2.5 cursor-grab active:cursor-grabbing",
@@ -38,7 +38,7 @@ pub(crate) fn AppChrome(
                     }
                     div { class: "flex h-8 self-stretch items-stretch",
                         Button {
-                            css_class: if active_page() == "home" { "flex h-8 min-w-[86px] items-center gap-1.5 border-0 bg-[#303137] px-3 text-xs text-white" } else { "flex h-8 min-w-[86px] items-center gap-1.5 border-0 bg-transparent px-3 text-xs text-[#b7b9bf] hover:bg-[#333438] hover:text-[#ececec]" },
+                            css_class: if active_page() == "home" { "flex h-8 min-w-[86px] items-center gap-1.5 border-0 bg-accent px-3 text-xs text-foreground" } else { "flex h-8 min-w-[86px] items-center gap-1.5 border-0 bg-transparent px-3 text-xs text-muted-foreground hover:bg-accent hover:text-foreground" },
                             variant: ButtonVariant::Ghost,
                             size: ButtonSize::Sm,
                             aria_label: "Home tab",
@@ -48,22 +48,22 @@ pub(crate) fn AppChrome(
                                 }
                                 active_page.set("home".to_owned());
                             },
-                            House { class: "block h-4 w-4 shrink-0 text-[#0071ff] [&_svg]:block [&_svg]:size-full" }
+                            House { class: "block h-4 w-4 shrink-0 text-primary [&_svg]:block [&_svg]:size-full" }
                             span { {tr("Home")} }
                         }
                         if active_page().starts_with("settings:") || settings_tab().is_some() {
-                            div { class: if active_page().starts_with("settings:") { "flex h-8 items-center bg-[#303137] text-white" } else { "flex h-8 items-center bg-transparent text-[#b7b9bf]" },
+                            div { class: if active_page().starts_with("settings:") { "flex h-8 items-center bg-accent text-foreground" } else { "flex h-8 items-center bg-transparent text-muted-foreground" },
                                 Button {
-                                    css_class: "h-8 min-w-[86px] bg-transparent px-3 text-xs gap-1.5 hover:bg-[#333438]",
+                                    css_class: "h-8 min-w-[86px] bg-transparent px-3 text-xs gap-1.5 hover:bg-accent",
                                     variant: ButtonVariant::Ghost,
                                     size: ButtonSize::Sm,
                                     aria_label: "Settings tab",
                                     onclick: move |event| open_settings.call(event),
-                                    Settings { class: "block h-4 w-4 shrink-0 text-[#0071ff] [&_svg]:block [&_svg]:size-full" }
+                                    Settings { class: "block h-4 w-4 shrink-0 text-primary [&_svg]:block [&_svg]:size-full" }
                                     span { {tr("Settings")} }
                                 }
                                 Button {
-                                    css_class: "mr-1 h-6 w-6 bg-transparent p-0 text-[#9da0a4] hover:bg-[#44454a]",
+                                    css_class: "mr-1 h-6 w-6 bg-transparent p-0 text-muted-foreground hover:bg-accent",
                                     variant: ButtonVariant::Ghost,
                                     size: ButtonSize::IconSm,
                                     aria_label: "Close Settings tab",
@@ -86,7 +86,7 @@ pub(crate) fn AppChrome(
                     }
                 }
                 Button {
-                    css_class: "h-8 w-8 bg-transparent p-0 text-[#bfc0c2] hover:bg-[#3a3b40] hover:text-white",
+                    css_class: "h-8 w-8 bg-transparent p-0 text-muted-foreground hover:bg-accent hover:text-foreground",
                     title: "Settings",
                     aria_label: "Settings",
                     variant: ButtonVariant::Ghost,
@@ -95,7 +95,7 @@ pub(crate) fn AppChrome(
                     icons::Menu { class: "block h-4 w-4 shrink-0 [&_svg]:block [&_svg]:size-full" }
                 }
                 Button {
-                    css_class: "h-8 w-8 bg-transparent p-0 text-[#bfc0c2] hover:bg-[#3a3b40] hover:text-white",
+                    css_class: "h-8 w-8 bg-transparent p-0 text-muted-foreground hover:bg-accent hover:text-foreground",
                     title: "Minimize",
                     aria_label: "Minimize",
                     variant: ButtonVariant::Ghost,
@@ -106,7 +106,7 @@ pub(crate) fn AppChrome(
                     Minus { class: "block h-4 w-4 shrink-0 [&_svg]:block [&_svg]:size-full" }
                 }
                 Button {
-                    css_class: "h-8 w-8 bg-transparent p-0 text-[#bfc0c2] hover:bg-[#3a3b40] hover:text-white",
+                    css_class: "h-8 w-8 bg-transparent p-0 text-muted-foreground hover:bg-accent hover:text-foreground",
                     title: "Maximize",
                     aria_label: "Maximize",
                     variant: ButtonVariant::Ghost,
@@ -117,7 +117,7 @@ pub(crate) fn AppChrome(
                     Square { class: "block h-4 w-4 shrink-0 [&_svg]:block [&_svg]:size-full" }
                 }
                 Button {
-                    css_class: "h-8 w-8 bg-transparent p-0 text-[#bfc0c2] hover:bg-[#c42b1c] hover:text-white",
+                    css_class: "h-8 w-8 bg-transparent p-0 text-muted-foreground hover:bg-destructive hover:text-white",
                     title: "Close",
                     aria_label: "Close",
                     variant: ButtonVariant::Ghost,
@@ -132,9 +132,9 @@ pub(crate) fn AppChrome(
     #[cfg(target_os = "android")]
     {
         rsx! {
-            nav { class: "flex min-h-12 items-center justify-between border-b border-[#404040] bg-rd-surface px-2.5 py-1",
+            nav { class: "flex min-h-12 items-center justify-between border-b border-border bg-card px-2.5 py-1",
                 Button {
-                    css_class: if active_page() == "home" { "min-h-[38px] min-w-[90px] bg-[#303137] text-white" } else { "min-h-[38px] min-w-[90px] text-[#bfc0c2]" },
+                    css_class: if active_page() == "home" { "min-h-[38px] min-w-[90px] bg-accent text-foreground" } else { "min-h-[38px] min-w-[90px] text-muted-foreground" },
                     variant: ButtonVariant::Ghost,
                     onclick: move |_| {
                                 if active_page.peek().starts_with("settings:") {
@@ -150,7 +150,7 @@ pub(crate) fn AppChrome(
                     "RustDesk"
                 }
                 Button {
-                    css_class: if active_page().starts_with("settings:") { "min-h-[38px] min-w-[90px] bg-[#303137] text-white" } else { "min-h-[38px] min-w-[90px] text-[#bfc0c2]" },
+                    css_class: if active_page().starts_with("settings:") { "min-h-[38px] min-w-[90px] bg-accent text-foreground" } else { "min-h-[38px] min-w-[90px] text-muted-foreground" },
                     variant: ButtonVariant::Ghost,
                     onclick: move |event| open_settings.call(event),
                     Settings { class: "block h-4 w-4 shrink-0 [&_svg]:block [&_svg]:size-full" }

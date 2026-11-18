@@ -1,5 +1,9 @@
 use serde_json::{json, Value};
 
+mod software;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod workload;
+
 const DIAGNOSTICS_KEY: &str = "hwcodec-diagnostics";
 const BENCHMARK_KEY: &str = "hwcodec-benchmark";
 
@@ -164,6 +168,7 @@ fn diagnostics_json() -> String {
     {
         backends.push(backend_entry(info, "decode", false));
     }
+    backends.extend(software::backends());
 
     let active_encode_h264 = if enable_hwcodec_option() {
         encoders.h264.as_ref()
@@ -211,7 +216,7 @@ fn diagnostics_json() -> String {
     json!({
         "enabled": false,
         "detected": false,
-        "backends": [],
+        "backends": software::backends(),
         "active": {"encode": {}, "decode": {}},
         "software_codecs": ["VP8", "VP9", "AV1"],
     })
@@ -223,119 +228,148 @@ fn diagnostics_json() -> String {
     not(any(target_os = "android", target_os = "ios"))
 ))]
 fn benchmark_json() -> String {
-    use std::time::Instant;
-
-    use hwcodec::{
-        common::{DataFormat, Quality::Quality_Default, RateControl::RC_CBR},
-        ffmpeg::AVPixelFormat,
-        ffmpeg_ram::{
-            decode::{DecodeContext, Decoder},
-            encode::{EncodeContext, Encoder},
-            ffmpeg_linesize_offset_length,
-        },
-    };
+    use hwcodec::common::DataFormat;
     use scrap::hwcodec::HwCodecConfig;
+    use scrap::{
+        codec::{EncoderApi, EncoderCfg, BR_BALANCED},
+        hwcodec::{HwRamDecoder, HwRamEncoder, HwRamEncoderConfig},
+        ImageFormat, ImageRgb,
+    };
+    use std::time::{Duration, Instant};
 
-    const WIDTH: usize = 1280;
-    const HEIGHT: usize = 720;
-    const ITERATIONS: usize = 24;
+    use self::workload::{convert_bgra_to_yuv, DesktopFrames, HEIGHT, ITERATIONS, WIDTH};
+
     detect();
     let config = HwCodecConfig::get();
     let software = hwcodec::ffmpeg_ram::CodecInfo::soft();
 
     let mut results = Vec::new();
-    let yuv = match ffmpeg_linesize_offset_length(
-        AVPixelFormat::AV_PIX_FMT_NV12,
-        WIDTH,
-        HEIGHT,
-        scrap::HW_STRIDE_ALIGN,
-    ) {
-        Ok((_, _, length)) if length > 0 => vec![0u8; length as usize],
-        _ => {
-            return json!({
-                "ok": false,
-                "error": "Unable to allocate the benchmark frame",
-                "results": [],
-            })
-            .to_string()
-        }
-    };
+    let mut encoded_streams = Vec::<(DataFormat, Vec<Vec<u8>>)>::new();
 
     for info in &config.ram_encode {
-        let context = EncodeContext {
+        if !matches!(info.format, DataFormat::H264 | DataFormat::H265) {
+            continue;
+        }
+        let mut result = backend_entry(info, "encode", is_hardware_encoder(&info.name));
+        let config = HwRamEncoderConfig {
             name: info.name.clone(),
             mc_name: info.mc_name.clone(),
-            width: WIDTH as i32,
-            height: HEIGHT as i32,
-            pixfmt: AVPixelFormat::AV_PIX_FMT_NV12,
-            align: scrap::HW_STRIDE_ALIGN as i32,
-            fps: 30,
-            gop: i32::MAX,
-            rc: RC_CBR,
-            quality: Quality_Default,
-            kbs: 4_000,
-            q: -1,
-            thread_count: 4,
+            width: WIDTH,
+            height: HEIGHT,
+            quality: BR_BALANCED,
+            keyframe_interval: None,
         };
-        let mut result = backend_entry(info, "encode", is_hardware_encoder(&info.name));
-        match Encoder::new(context) {
+        match HwRamEncoder::new(EncoderCfg::HWRAM(config), false) {
             Ok(mut encoder) => {
-                let start = Instant::now();
+                let yuv_format = encoder.yuvfmt();
+                let mut yuv = Vec::new();
+                let mut desktop = DesktopFrames::new(WIDTH, HEIGHT);
+                let mut elapsed = Duration::ZERO;
                 let mut frames = 0usize;
                 let mut bytes = 0usize;
                 let mut error = None;
+                let mut stream = Vec::new();
+                let save_stream = !encoded_streams
+                    .iter()
+                    .any(|(format, _)| *format == info.format);
                 for index in 0..ITERATIONS {
-                    match encoder.encode(&yuv, (index * 33) as i64) {
-                        Ok(encoded) => {
-                            frames += encoded.len();
-                            bytes += encoded.iter().map(|frame| frame.data.len()).sum::<usize>();
-                        }
+                    let bgra = desktop.next_frame(index);
+                    let frame_started = Instant::now();
+                    if let Err(err) = convert_bgra_to_yuv(bgra, &yuv_format, &mut yuv) {
+                        error = Some(err.to_string());
+                        break;
+                    }
+                    let encoded = match encoder.encode(&yuv, (index * 1000 / workload::FPS) as i64)
+                    {
+                        Ok(encoded) => encoded,
                         Err(code) => {
                             error = Some(format!("FFmpeg error {code}"));
                             break;
                         }
+                    };
+                    elapsed += frame_started.elapsed();
+                    for frame in encoded.iter() {
+                        frames += 1;
+                        bytes += frame.data.len();
+                        if save_stream {
+                            stream.push(frame.data.clone());
+                        }
                     }
                 }
-                let elapsed = start.elapsed().as_secs_f64();
+                let elapsed = elapsed.as_secs_f64();
                 result["frames"] = json!(frames);
                 result["bytes"] = json!(bytes);
                 result["fps"] = json!(frames as f64 / elapsed.max(f64::EPSILON));
                 result["duration_ms"] = json!((elapsed * 1000.0).round());
+                result["pipeline"] = json!("BGRA to YUV conversion + encode");
+                if error.is_none() && !stream.is_empty() {
+                    encoded_streams.push((info.format, stream));
+                }
                 result["error"] = error.map_or(Value::Null, Value::String);
             }
-            Err(_) => result["error"] = json!("Unable to create encoder"),
+            Err(error) => result["error"] = json!(error.to_string()),
         }
         results.push(result);
     }
 
-    for info in config.ram_decode.iter().chain(
-        [software.h264.as_ref(), software.h265.as_ref()]
-            .into_iter()
-            .flatten(),
-    ) {
-        let data: &[u8] = match info.format {
-            DataFormat::H264 => include_bytes!("../third_party/hwcodec-vendor/src/res/720p.h264"),
-            DataFormat::H265 => include_bytes!("../third_party/hwcodec-vendor/src/res/720p.h265"),
-            _ => continue,
-        };
-        let context = DecodeContext {
-            name: info.name.clone(),
-            device_type: info.hwdevice,
-            thread_count: 4,
+    for info in config
+        .ram_decode
+        .iter()
+        .filter(|info| is_hardware_decoder(info))
+        .chain(
+            [software.h264.as_ref(), software.h265.as_ref()]
+                .into_iter()
+                .flatten(),
+        )
+    {
+        let stream = encoded_streams
+            .iter()
+            .find(|(format, _)| *format == info.format);
+        let (packets, samples, source) = match stream {
+            Some((_, packets)) => (
+                packets.iter().map(Vec::as_slice).collect::<Vec<_>>(),
+                packets.len(),
+                "dynamic desktop stream",
+            ),
+            None => {
+                let data: &[u8] = match info.format {
+                    DataFormat::H264 => {
+                        include_bytes!("../third_party/hwcodec-vendor/src/res/720p.h264")
+                    }
+                    DataFormat::H265 => {
+                        include_bytes!("../third_party/hwcodec-vendor/src/res/720p.h265")
+                    }
+                    _ => continue,
+                };
+                (vec![data], ITERATIONS, "embedded sample repeated")
+            }
         };
         let mut result = backend_entry(info, "decode", is_hardware_decoder(info));
-        match Decoder::new(context) {
+        match HwRamDecoder::new_with_info(info.clone()) {
             Ok(mut decoder) => {
+                let mut rgb = ImageRgb::new(ImageFormat::ABGR, 1);
+                let mut i420 = Vec::new();
                 let start = Instant::now();
                 let mut frames = 0usize;
                 let mut error = None;
-                for _ in 0..ITERATIONS {
-                    match decoder.decode(data) {
-                        Ok(decoded) => frames += decoded.len(),
-                        Err(code) => {
-                            error = Some(format!("FFmpeg error {code}"));
+                for data in packets.into_iter().cycle().take(samples) {
+                    match decoder.decode_without_fallback(data) {
+                        Ok(decoded) => {
+                            for image in decoded {
+                                if let Err(err) = image.to_fmt(&mut rgb, &mut i420) {
+                                    error = Some(err.to_string());
+                                    break;
+                                }
+                                frames += 1;
+                            }
+                        }
+                        Err(err) => {
+                            error = Some(err.to_string());
                             break;
                         }
+                    }
+                    if error.is_some() {
+                        break;
                     }
                 }
                 let elapsed = start.elapsed().as_secs_f64();
@@ -343,17 +377,22 @@ fn benchmark_json() -> String {
                 result["fps"] = json!(frames as f64 / elapsed.max(f64::EPSILON));
                 result["duration_ms"] = json!((elapsed * 1000.0).round());
                 result["error"] = error.map_or(Value::Null, Value::String);
+                result["pipeline"] = json!("decode + YUV to ABGR conversion");
+                result["test_stream"] = json!(source);
             }
-            Err(_) => result["error"] = json!("Unable to create decoder"),
+            Err(error) => result["error"] = json!(error.to_string()),
         }
         results.push(result);
     }
+    results.extend(software::benchmark());
 
     json!({
         "ok": true,
         "iterations": ITERATIONS,
         "width": WIDTH,
         "height": HEIGHT,
+        "target_fps": workload::FPS,
+        "source": "changing desktop-like BGRA frames",
         "results": results,
     })
     .to_string()
@@ -395,7 +434,24 @@ mod tests {
     }
 }
 
-#[cfg(any(not(feature = "hwcodec"), target_os = "android", target_os = "ios"))]
+#[cfg(all(
+    not(feature = "hwcodec"),
+    not(any(target_os = "android", target_os = "ios"))
+))]
+fn benchmark_json() -> String {
+    json!({
+        "ok": true,
+        "iterations": workload::ITERATIONS,
+        "width": workload::WIDTH,
+        "height": workload::HEIGHT,
+        "target_fps": workload::FPS,
+        "source": "changing desktop-like BGRA frames",
+        "results": software::benchmark(),
+    })
+    .to_string()
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
 fn benchmark_json() -> String {
     json!({
         "ok": false,

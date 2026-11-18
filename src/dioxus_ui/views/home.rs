@@ -193,7 +193,7 @@ pub(crate) fn Home() -> Element {
     let rustdesk_icon = rustdesk_icon_data_uri();
 
     return rsx! {
-        div { class: if remote_window { "flex h-screen w-full flex-col overflow-hidden bg-[#090a0b]" } else { "flex h-screen min-h-[480px] w-full flex-col overflow-hidden bg-rd-window max-[841px]:h-[100dvh] max-[841px]:min-h-[100dvh]" },
+        div { class: if remote_window { "flex h-screen w-full flex-col overflow-hidden bg-[#090a0b]" } else { "flex h-screen min-h-[480px] w-full flex-col overflow-hidden bg-background max-[841px]:h-[100dvh] max-[841px]:min-h-[100dvh]" },
             if remote_window && cfg!(not(any(target_os = "android", target_os = "ios"))) {
                 {desktop_remote_window()}
             } else {

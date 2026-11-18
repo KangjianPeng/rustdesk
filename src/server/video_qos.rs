@@ -421,6 +421,7 @@ impl VideoQoS {
         if let Some(user) = self.users.get_mut(&id) {
             user.custom_fps = Some(fps);
         }
+        self.adjust_fps();
     }
 
     pub fn user_auto_adjust_fps(&mut self, id: i32, fps: u32) {
@@ -430,6 +431,7 @@ impl VideoQoS {
         if let Some(user) = self.users.get_mut(&id) {
             user.auto_adjust_fps = Some(fps);
         }
+        self.adjust_fps();
     }
 
     pub fn user_image_quality(&mut self, id: i32, image_quality: i32) {

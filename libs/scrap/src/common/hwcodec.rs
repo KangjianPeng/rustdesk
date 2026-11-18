@@ -385,6 +385,31 @@ impl HwRamDecoder {
             }
         }
     }
+
+    pub fn new_with_info(info: CodecInfo) -> ResultType<Self> {
+        let ctx = DecodeContext {
+            name: info.name.clone(),
+            device_type: info.hwdevice.clone(),
+            thread_count: codec_thread_num(16) as _,
+        };
+        match Decoder::new(ctx) {
+            Ok(decoder) => Ok(HwRamDecoder {
+                decoder,
+                software_decoder: None,
+                info,
+            }),
+            Err(_) => Err(anyhow!("Failed to create decoder")),
+        }
+    }
+
+    // A benchmark must measure the selected backend even when it fails.
+    pub fn decode_without_fallback(&mut self, data: &[u8]) -> ResultType<Vec<HwRamDecoderImage<'_>>> {
+        self.decoder
+            .decode(data)
+            .map(|frames| frames.iter().map(|frame| HwRamDecoderImage { frame }).collect())
+            .map_err(|error| anyhow!("FFmpeg decode failed: {error}"))
+    }
+
     pub fn decode<'a>(
         &'a mut self,
         data: &[u8],

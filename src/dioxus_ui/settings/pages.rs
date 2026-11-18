@@ -31,32 +31,7 @@ pub(crate) fn SettingsContent(
                     SettingToggle { label: "Disable UDP", option_key: OPTION_DISABLE_UDP, default_on: false }
                 }
             },
-            "settings:codec" => rsx! {
-                SettingsCard { title: "Codec diagnostics",
-                    div { class: "px-[15px] pb-2",
-                div { class: "mt-5 flex flex-wrap gap-[9px]",
-                    Button { variant: ButtonVariant::Outline, disabled: codec_state.read().loading, onclick: move |_| {
-                        update_signal(codec_state, |state| state.loading = true);
-                        let codec_state = codec_state;
-                        spawn(async move {
-                            let diagnostics = super::super::settings::codec_json("hwcodec-diagnostics").await;
-                            update_signal(codec_state, |state| { state.diagnostics = Arc::from(diagnostics); state.loading = false; });
-                        });
-                    }, if codec_state.read().loading { {tr("Detecting...")} } else { {tr("Detect backends")} } }
-                    Button { disabled: codec_state.read().benchmarking, onclick: move |_| {
-                        update_signal(codec_state, |state| state.benchmarking = true);
-                        let codec_state = codec_state;
-                        spawn(async move {
-                            let benchmark = super::super::settings::codec_json("hwcodec-benchmark").await;
-                            update_signal(codec_state, |state| { state.benchmark = Arc::from(benchmark); state.benchmarking = false; });
-                        });
-                    }, if codec_state.read().benchmarking { {tr("Testing...")} } else { {tr("Test performance")} } }
-                }
-                CodecDiagnostics { state: codec_state }
-
-                    }
-                }
-            },
+            "settings:codec" => rsx! { CodecDiagnostics { state: codec_state } },
             "settings:display" => rsx! {
                 SettingsCard { title: "Default View Style",
                     SettingChoice { label: "Default View Style", radio: true, scope: SettingsScope::UserDefault, option_key: OPTION_VIEW_STYLE, values: choices(&[("original", "Scale original"), ("adaptive", "Scale adaptive")]), default_value: "original" }
@@ -87,7 +62,7 @@ pub(crate) fn SettingsContent(
             },
             "settings:account" => rsx! {
                 SettingsCard { title: "Account",
-                    p { class: "px-[15px] pb-2 text-[15px] text-rd-muted", {tr("Account sign-in is not yet available in the native interface.")} }
+                    p { class: "px-[15px] pb-2 text-[15px] text-muted-foreground", {tr("Account sign-in is not yet available in the native interface.")} }
                 }
             },
             "settings:printer" => rsx! {
@@ -101,11 +76,11 @@ pub(crate) fn SettingsContent(
                 SettingsCard { title: "RustDesk",
                     div { class: "flex flex-col gap-3 px-[15px] pb-2 text-[15px]",
                         p { {tr("Version")} ": " {version} }
-                        Button { css_class: "w-fit bg-transparent p-0 text-rd-accent", variant: ButtonVariant::Ghost, onclick: move |_| open_external_url("https://rustdesk.com"), {tr("Website")} }
-                        Button { css_class: "w-fit bg-transparent p-0 text-rd-accent", variant: ButtonVariant::Ghost, onclick: move |_| open_external_url("https://rustdesk.com/privacy"), {tr("Privacy Statement")} }
+                        Button { css_class: "w-fit bg-transparent p-0 text-primary", variant: ButtonVariant::Ghost, onclick: move |_| open_external_url("https://rustdesk.com"), {tr("Website")} }
+                        Button { css_class: "w-fit bg-transparent p-0 text-primary", variant: ButtonVariant::Ghost, onclick: move |_| open_external_url("https://rustdesk.com/privacy"), {tr("Privacy Statement")} }
                     }
                 }
-                div { class: "box-border mt-[15px] w-full max-w-[540px] rounded bg-[#0071ff] p-5 text-[15px] leading-6 text-white",
+                div { class: "box-border mt-[15px] w-full max-w-[540px] rounded bg-secondary p-5 text-[15px] leading-6 text-secondary-foreground",
                     p { "RustDesk" }
                     p { {tr("Licensed under the GNU Affero General Public License v3.0")} }
                 }

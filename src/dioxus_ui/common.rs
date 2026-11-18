@@ -81,8 +81,8 @@ pub(super) fn read_service_status() -> ServiceStatusUi {
 #[component]
 pub(super) fn ServiceStatus(status: ServiceStatusUi) -> Element {
     rsx! {
-        div { class: "box-border flex h-[43px] shrink-0 items-center gap-[14px] border-0 border-t border-solid border-[#34363a] px-[14px] text-sm text-[#a9abb0]", role: "status",
-            span { class: if status.tone == "ready" { "h-2 w-2 shrink-0 rounded-full bg-[#32bea6]" } else if status.tone == "connecting" { "h-2 w-2 shrink-0 rounded-full bg-[#e1ad4c]" } else { "h-2 w-2 shrink-0 rounded-full bg-[#df4f5f]" } }
+        div { class: "box-border flex h-[43px] shrink-0 items-center gap-[14px] border-0 border-t border-solid border-border px-[14px] text-sm text-muted-foreground", role: "status",
+            span { class: if status.tone == "ready" { "h-2 w-2 shrink-0 rounded-full bg-success" } else if status.tone == "connecting" { "h-2 w-2 shrink-0 rounded-full bg-warning" } else { "h-2 w-2 shrink-0 rounded-full bg-destructive" } }
             span { class: "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap", {tr(&status.label)} }
         }
     }
@@ -118,7 +118,7 @@ pub(super) fn HelpCard(data: HelpCardData) -> Element {
         dismissible,
     } = data;
     rsx! {
-        div { class: "box-border relative mt-5 w-full shrink-0 bg-[linear-gradient(to_right,#e242bc,#f4727c)] p-5 text-sm text-white [&_h3]:m-0 [&_h3]:border-0 [&_h3]:p-0 [&_h3]:text-center [&_h3]:text-sm [&_h3]:font-bold [&_p]:my-2 [&_p]:leading-normal",
+        div { class: "box-border relative mt-5 w-full shrink-0 bg-muted p-5 text-sm text-foreground [&_h3]:m-0 [&_h3]:border-0 [&_h3]:p-0 [&_h3]:text-center [&_h3]:text-sm [&_h3]:font-bold [&_p]:my-2 [&_p]:leading-normal",
             if !title.is_empty() {
                 h3 { "{title}" }
             }
@@ -138,7 +138,7 @@ pub(super) fn HelpCard(data: HelpCardData) -> Element {
             }
             if let (Some(help), Some(url)) = (help, help_url) {
                 Button {
-                    css_class: "text-[#8eb6f4]",
+                    css_class: "text-primary",
                     variant: ButtonVariant::Ghost,
                     size: ButtonSize::Sm,
                     onclick: move |_| open_external_url(&url),

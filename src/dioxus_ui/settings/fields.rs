@@ -99,8 +99,8 @@ pub(crate) fn SettingToggle(
                 onclick: move |_| change.call(!checked),
                 {tr(&label)}
             }
-            if !description.is_empty() { p { class: "col-start-2 mt-1 text-xs text-rd-muted", {tr(&description)} } }
-            if !error().is_empty() { p { role: "alert", class: "col-span-2 text-xs text-red-400", "{error}" } }
+            if !description.is_empty() { p { class: "col-start-2 mt-1 text-xs text-muted-foreground", {tr(&description)} } }
+            if !error().is_empty() { p { role: "alert", class: "col-span-2 text-xs text-destructive", "{error}" } }
         }
     }
 }
@@ -158,19 +158,19 @@ pub(crate) fn SettingChoice(
                 for (value, title) in &values {
                     div { role: "radio", aria_checked: selected() == *value,
                         Button {
-                            css_class: "flex min-h-9 w-full bg-transparent px-2.5 py-1 text-[15px] text-[#e3e3e3] justify-start gap-2.5 text-left",
+                            css_class: "flex min-h-9 w-full bg-transparent px-2.5 py-1 text-[15px] text-foreground justify-start gap-2.5 text-left",
                             variant: ButtonVariant::Ghost,
                             disabled,
                             aria_label: title.clone(),
                             onclick: { let value = value.clone(); move |_| change.call(value.clone()) },
-                            span { class: if selected() == *value { "box-border grid size-[18px] shrink-0 place-items-center rounded-full border-2 border-solid border-rd-accent" } else { "box-border grid size-[18px] shrink-0 place-items-center rounded-full border-2 border-solid border-[#999b9f]" },
-                                if selected() == *value { span { class: "block size-2.5 rounded-full bg-rd-accent" } }
+                            span { class: if selected() == *value { "box-border grid size-[18px] shrink-0 place-items-center rounded-full border-2 border-solid border-primary" } else { "box-border grid size-[18px] shrink-0 place-items-center rounded-full border-2 border-solid border-input" },
+                                if selected() == *value { span { class: "block size-2.5 rounded-full bg-primary" } }
                             }
                             span { {tr(title)} }
                         }
                     }
                 }
-                if !error().is_empty() { p { role: "alert", class: "px-[15px] text-xs text-red-400", "{error}" } }
+                if !error().is_empty() { p { role: "alert", class: "px-[15px] text-xs text-destructive", "{error}" } }
             }
         };
     }
@@ -178,7 +178,7 @@ pub(crate) fn SettingChoice(
     rsx! {
         div { class: "relative px-[15px] py-2",
             if !label.is_empty() { h3 { class: "mb-2 text-[15px] font-normal", {tr(&label)} } }
-            if !description.is_empty() { p { class: "mb-2 text-xs text-rd-muted", {tr(&description)} } }
+            if !description.is_empty() { p { class: "mb-2 text-xs text-muted-foreground", {tr(&description)} } }
             Select {
                 css_class: "w-[240px] max-w-full",
                 default_value: Some(selected_label.clone()),
@@ -200,7 +200,7 @@ pub(crate) fn SettingChoice(
                     }
                 }
             }
-            if !error().is_empty() { p { role: "alert", class: "mt-2 text-xs text-red-400", "{error}" } }
+            if !error().is_empty() { p { role: "alert", class: "mt-2 text-xs text-destructive", "{error}" } }
         }
     }
 }
@@ -222,9 +222,9 @@ pub(crate) fn DefaultImageQuality() -> Element {
         if mode() == "custom" {
             div { class: "ml-[38px] mr-[15px] mt-2 grid grid-cols-[minmax(0,1fr)_90px] items-center gap-3 text-[15px]",
                 label { r#for: "default-quality", {tr("Bitrate (%)")} }
-                input { id: "default-quality", aria_label: tr("Default bitrate (%)"), class: "box-border h-9 min-w-0 rounded border border-solid border-[#55575b] bg-rd-content px-2 text-sm", r#type: "number", min: "10", max: "100", value: quality(), oninput: move |event| { quality.set(event.value()); status.set(String::new()); } }
+                input { id: "default-quality", aria_label: tr("Default bitrate (%)"), class: "box-border h-9 min-w-0 rounded border border-solid border-input bg-background px-2 text-sm", r#type: "number", min: "10", max: "100", value: quality(), oninput: move |event| { quality.set(event.value()); status.set(String::new()); } }
                 label { r#for: "default-fps", "FPS" }
-                input { id: "default-fps", aria_label: tr("Default FPS"), class: "box-border h-9 min-w-0 rounded border border-solid border-[#55575b] bg-rd-content px-2 text-sm", r#type: "number", min: "5", max: "120", value: fps(), oninput: move |event| { fps.set(event.value()); status.set(String::new()); } }
+                input { id: "default-fps", aria_label: tr("Default FPS"), class: "box-border h-9 min-w-0 rounded border border-solid border-input bg-background px-2 text-sm", r#type: "number", min: "5", max: "120", value: fps(), oninput: move |event| { fps.set(event.value()); status.set(String::new()); } }
                 div { class: "col-span-2 flex justify-end gap-2",
                     Button { variant: ButtonVariant::Outline, onclick: move |_| {
                         quality.set(scope.read(OPTION_CUSTOM_IMAGE_QUALITY));
@@ -243,7 +243,7 @@ pub(crate) fn DefaultImageQuality() -> Element {
                         }
                     }, {tr("Save")} }
                 }
-                if !status().is_empty() { p { role: "status", class: "col-span-2 text-xs text-rd-muted", {tr(&status())} } }
+                if !status().is_empty() { p { role: "status", class: "col-span-2 text-xs text-muted-foreground", {tr(&status())} } }
             }
         }
     }

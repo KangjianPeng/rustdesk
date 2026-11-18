@@ -2,7 +2,7 @@ use super::super::super::prelude::*;
 use super::toolbar::ToolbarState;
 use icons::{Check, ChevronRight};
 
-const ITEM: &str = "flex min-h-8 w-full items-center gap-2 rounded-[3px] px-3 py-1.5 text-left text-xs hover:bg-[#3b5d91] focus-visible:bg-[#3b5d91] disabled:opacity-40 [&_svg]:block [&_svg]:size-4";
+const ITEM: &str = "flex min-h-8 w-full items-center gap-2 rounded-[3px] px-3 py-1.5 text-left text-xs hover:bg-accent focus-visible:bg-accent disabled:opacity-40 [&_svg]:block [&_svg]:size-4";
 
 #[component]
 pub(super) fn MenuItem(
@@ -31,7 +31,7 @@ pub(super) fn MenuItem(
 
 #[component]
 pub(super) fn Divider() -> Element {
-    rsx! { div { class: "my-1.5 border-t border-[#48494e]", role: "separator" } }
+    rsx! { div { class: "my-1.5 border-t border-border", role: "separator" } }
 }
 
 #[component]
@@ -186,26 +186,38 @@ pub(super) fn DisplayMenu(
 
 #[component]
 fn ScaleControls(value: u16, maximum: u16, onchange: EventHandler<u16>) -> Element {
-    let out_class = if value <= 5 { "text-rd-muted" } else { "text-[#ececec] hover:bg-[#3b5d91]" };
-    let in_class = if value >= maximum { "text-rd-muted" } else { "text-[#ececec] hover:bg-[#3b5d91]" };
-    let reset_class = if maximum < 100 || value == 100 { "text-rd-muted" } else { "text-[#ececec] hover:bg-[#3b5d91]" };
+    let out_class = if value <= 5 {
+        "text-muted-foreground"
+    } else {
+        "text-foreground hover:bg-accent"
+    };
+    let in_class = if value >= maximum {
+        "text-muted-foreground"
+    } else {
+        "text-foreground hover:bg-accent"
+    };
+    let reset_class = if maximum < 100 || value == 100 {
+        "text-muted-foreground"
+    } else {
+        "text-foreground hover:bg-accent"
+    };
     rsx! {
         div { class: "mx-3 my-2 grid grid-cols-[28px_minmax(0,1fr)_auto_28px_auto] items-center gap-1.5 text-xs", role: "group", aria_label: tr("Scale (%)"),
-            button { class: "box-border flex size-7 items-center justify-center rounded border border-[#55575b] bg-rd-content p-0 {out_class}", r#type: "button", title: tr("Zoom out"), aria_label: tr("Zoom out"), disabled: value <= 5,
+            button { class: "box-border flex size-7 items-center justify-center rounded border border-input bg-background p-0 {out_class}", r#type: "button", title: tr("Zoom out"), aria_label: tr("Zoom out"), disabled: value <= 5,
                 onclick: move |_| onchange.call(value.saturating_sub(5).clamp(5, maximum)),
                 Minus { class: "size-3.5" }
             }
-            input { class: "box-border h-7 min-w-0 w-full rounded border border-[#55575b] bg-rd-content px-1 text-center text-[#ececec]", r#type: "number", aria_label: tr("Scale (%)"), min: "5", max: "{maximum}", step: "5", value: "{value}",
+            input { class: "box-border h-7 min-w-0 w-full rounded border border-input bg-background px-1 text-center text-foreground", r#type: "number", aria_label: tr("Scale (%)"), min: "5", max: "{maximum}", step: "5", value: "{value}",
                 onchange: move |event| if let Ok(percent) = event.value().parse::<u16>() {
                     onchange.call(percent.clamp(5, maximum));
                 }
             }
             span { "%" }
-            button { class: "box-border flex size-7 items-center justify-center rounded border border-[#55575b] bg-rd-content p-0 {in_class}", r#type: "button", title: tr("Zoom in"), aria_label: tr("Zoom in"), disabled: value >= maximum,
+            button { class: "box-border flex size-7 items-center justify-center rounded border border-input bg-background p-0 {in_class}", r#type: "button", title: tr("Zoom in"), aria_label: tr("Zoom in"), disabled: value >= maximum,
                 onclick: move |_| onchange.call(value.saturating_add(5).clamp(5, maximum)),
                 icons::Plus { class: "size-3.5" }
             }
-            button { class: "box-border h-7 rounded border border-[#55575b] bg-rd-content px-2 {reset_class}", r#type: "button", title: tr("Reset zoom"), aria_label: tr("Reset zoom"), disabled: maximum < 100 || value == 100,
+            button { class: "box-border h-7 rounded border border-input bg-background px-2 {reset_class}", r#type: "button", title: tr("Reset zoom"), aria_label: tr("Reset zoom"), disabled: maximum < 100 || value == 100,
                 onclick: move |_| onchange.call(100.min(maximum)), "100%"
             }
         }
@@ -332,7 +344,7 @@ pub(super) fn CustomQuality(mut open: Signal<bool>) -> Element {
     rsx! {
         dialog {
             id: "remote-quality-dialog",
-            class: "fixed inset-0 m-auto max-h-[calc(100vh-32px)] w-[420px] max-w-[calc(100vw-32px)] overflow-auto rounded-xl border bg-card p-6 text-sm text-card-foreground shadow-xl backdrop:bg-black/50",
+            class: "fixed top-1/2 left-1/2 m-0 max-h-[calc(100vh-32px)] w-[420px] max-w-[calc(100vw-32px)] [transform:translate(-50%,-50%)] overflow-auto rounded-xl border bg-card text-sm text-card-foreground shadow-xl backdrop:bg-black/50",
             aria_labelledby: "remote-quality-title",
             onmounted: move |_| async move {
                 let eval = document::eval("const dialog = document.getElementById('remote-quality-dialog'); return await new Promise(resolve => { dialog.addEventListener('close', () => resolve(true), { once: true }); dialog.showModal(); });");
@@ -341,7 +353,9 @@ pub(super) fn CustomQuality(mut open: Signal<bool>) -> Element {
                 }
                 open.set(false);
             },
-            form { class: "flex flex-col gap-5",
+            onclick: move |_| { document::eval("document.getElementById('remote-quality-dialog')?.close();"); },
+            form { class: "flex flex-col gap-5 p-6",
+                onclick: move |event| event.stop_propagation(),
                 onsubmit: move |event| { event.prevent_default(); save(); },
                 h2 { id: "remote-quality-title", class: "text-lg leading-6 font-semibold", {tr("Custom Image Quality")} }
                 div { class: "grid grid-cols-[minmax(0,1fr)_104px] items-center gap-x-4 gap-y-3",

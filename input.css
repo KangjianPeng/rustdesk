@@ -25,15 +25,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-}
-
-@theme {
-  --color-rd-window: #202124;
-  --color-rd-surface: #24252b;
-  --color-rd-panel: #292a2d;
-  --color-rd-content: #18191e;
-  --color-rd-accent: #5d91e8;
-  --color-rd-muted: #999b9f;
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-success-dark: var(--success-dark);
+  --color-warning: var(--warning);
+  --color-info-light: var(--info-light);
+  --color-info-dark: var(--info-dark);
 }
 
 @layer base {
@@ -57,6 +54,12 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
+    --success: oklch(0.65 0.16 145);
+    --success-light: oklch(0.25 0.08 145);
+    --success-dark: oklch(0.75 0.16 145);
+    --warning: oklch(0.65 0.16 55);
+    --info-light: oklch(0.25 0.08 250);
+    --info-dark: oklch(0.75 0.18 250);
     color-scheme: dark;
     font-family: Arial, sans-serif;
     background: var(--background);
