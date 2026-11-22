@@ -3,7 +3,7 @@ Version:    1.1.9
 Release:    0
 Summary:    RPM package
 License:    GPL-3.0
-Requires:   gtk3 libdav1d7 libwebkit2gtk-4_1-0 libxcb1 libXfixes3 alsa-utils libXtst6 libva2 gstreamer-plugins-base gstreamer-plugin-pipewire
+Requires:   gtk3 libdav1d7 libwebkit2gtk-4_1-0 libxcb1 libXfixes3 alsa-utils libXtst6 libva2 gstreamer-plugins-base libdrm.so.2()(64bit) libEGL.so.1()(64bit) libGLESv2.so.2()(64bit)
 Recommends: libayatana-appindicator3-1 xdotool
 
 # https://docs.fedoraproject.org/en-US/packaging-guidelines/Scriptlets/
@@ -31,6 +31,14 @@ install $HBB/res/128x128@2x.png %{buildroot}/usr/share/icons/hicolor/256x256/app
 install $HBB/res/scalable.svg %{buildroot}/usr/share/icons/hicolor/scalable/apps/rustdesk.svg
 install $HBB/res/rustdesk.desktop %{buildroot}/usr/share/rustdesk/files/
 install $HBB/res/rustdesk-link.desktop %{buildroot}/usr/share/rustdesk/files/
+drmtap_dir="${DRMTAP_PREBUILT_DIR:-${HBB}/third_party/libdrmtap/build-pkg}"
+set -- "$drmtap_dir"/libdrmtap.so.0.*
+if [ "$#" -ne 1 ] || [ ! -f "$1" ] || [ -L "$1" ]; then
+  echo "Expected exactly one built libdrmtap.so.0.* in $drmtap_dir" >&2
+  exit 1
+fi
+install -Dm 755 "$1" -t "%{buildroot}/usr/lib/rustdesk"
+ln -s "$(basename "$1")" "%{buildroot}/usr/lib/rustdesk/libdrmtap.so.0"
 
 %files
 /usr/bin/rustdesk
@@ -39,6 +47,7 @@ install $HBB/res/rustdesk-link.desktop %{buildroot}/usr/share/rustdesk/files/
 /usr/share/icons/hicolor/scalable/apps/rustdesk.svg
 /usr/share/rustdesk/files/rustdesk.desktop
 /usr/share/rustdesk/files/rustdesk-link.desktop
+/usr/lib/rustdesk
 
 %changelog
 # let's skip this for now

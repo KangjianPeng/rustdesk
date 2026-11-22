@@ -25,16 +25,14 @@ use_samplerate = ["samplerate", "libsamplerate-sys"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 dioxus-ui = ["dep:dioxus", "dep:dioxus-i18n", "dep:registry", "dep:icons", "dep:webbrowser", "dep:glow", "scrap/dav1d", "scrap/dioxus-android"]
-default = ["use_dasp", "dioxus-ui", "hwcodec"]
+default = ["use_dasp", "dioxus-ui", "hwcodec", "drm", "drm-wake"]
 hwcodec = ["scrap/hwcodec", "dep:hwcodec"]
 vram = ["scrap/vram"]
 mediacodec = ["scrap/mediacodec"]
 drm = ["scrap/drm"]
-# The display wake, as its OWN compile gate on top of `drm`. Everything else in the drm backend
-# READS (it captures a scanout); the wake WRITES, injecting one synthetic pointer event from the
-# root service so a compositor that idle-disabled its outputs re-enables them. That is a different
-# kind of operation and deserves a switch that can remove it from the binary entirely, without
-# giving up DRM capture: `--features drm` builds the capture path with no wake code compiled in.
+# The display wake is its own compile gate on top of `drm`; the standard Linux build enables both
+# features so an unattended session can wake an idle display. The runtime option remains available
+# for deployments that want to disable wake behavior without selecting a different capture backend.
 drm-wake = ["drm"]
 linux-pkg-config = ["magnum-opus/linux-pkg-config", "scrap/linux-pkg-config"]
 unix-file-copy-paste = ["clipboard/unix-file-copy-paste"]

@@ -259,27 +259,35 @@ fn abi_accepted(major: c_int, minor: c_int, patch: c_int) -> bool {
 
 impl DrmtapLib {
     fn load() -> Option<Self> {
-        // Absolute path FIRST: the deb bundles the .so privately under /usr/lib/rustdesk and does NOT register that dir with ld.so.
+        // Absolute path FIRST: native packages bundle the .so privately under /usr/lib/rustdesk
+        // and do not register that directory with ld.so.
         const INSTALLED: &str = "/usr/lib/rustdesk/libdrmtap.so.0";
         // Bare sonames exist so an unpackaged development build can load a locally built .so from
-        // the normal ld.so search path. They are NOT offered when running as root: this is the one
-        // place where which file happens to be on the load path decides what gets mapped into the
-        // CAP_SYS_ADMIN process, and the packaged service always finds the absolute path first
-        // anyway. A root process that reaches the fallback has no bundled library, which is the
-        // PipeWire-fallback case, not a reason to search.
+        // the normal ld.so search path. They are NOT offered when running as root: a privileged
+        // process must only load the package-owned absolute path or an AppImage-owned path.
         const DEV_ONLY: [&str; 2] = ["libdrmtap.so.0", "libdrmtap.so"];
         let is_root = unsafe { hbb_common::libc::geteuid() } == 0;
-        let candidates: Vec<&str> = if is_root {
-            vec![INSTALLED]
-        } else {
-            std::iter::once(INSTALLED).chain(DEV_ONLY).collect()
-        };
+        let mut candidates = vec![std::path::PathBuf::from(INSTALLED)];
+        // AppImage keeps the private runtime under AppDir/usr/lib/rustdesk. Walk only the
+        // executable's parents and require the AppRun marker, so a root service never trusts an
+        // arbitrary APPDIR or an inherited library search path.
+        if let Ok(exe) = std::env::current_exe() {
+            for parent in exe.ancestors() {
+                if parent.join("AppRun").is_file() {
+                    candidates.push(parent.join("usr/lib/rustdesk/libdrmtap.so.0"));
+                    break;
+                }
+            }
+        }
+        if !is_root {
+            candidates.extend(DEV_ONLY.iter().map(std::path::PathBuf::from));
+        }
         unsafe {
             let mut errs = Vec::new();
-            let found = candidates.iter().find_map(|n| match Library::new(*n) {
-                Ok(l) => Some((l, *n)),
+            let found = candidates.iter().find_map(|name| match Library::new(name) {
+                Ok(l) => Some((l, name.clone())),
                 Err(e) => {
-                    errs.push(format!("{n}: {e}"));
+                    errs.push(format!("{}: {e}", name.display()));
                     None
                 }
             });
@@ -289,9 +297,10 @@ impl DrmtapLib {
                 log::warn!("libdrmtap dlopen failed: {}", errs.join("; "));
                 return None;
             };
+            let name_display = name.display().to_string();
             // Canonicalize the absolute candidate only: `dlopen` does not search the CWD for a bare
             // soname, while `canonicalize` resolves a relative name against it.
-            let real = std::path::Path::new(name)
+            let real = name
                 .is_absolute()
                 .then(|| std::fs::canonicalize(name).ok())
                 .flatten();
@@ -313,10 +322,9 @@ impl DrmtapLib {
                 };
                 let (min_minor, min_patch) = DRMTAP_MIN_MINOR_PATCH;
                 log::warn!(
-                    "libdrmtap {name} reports v{major}.{minor}.{patch}, which this build cannot \
+                    "libdrmtap {name_display} reports v{major}.{minor}.{patch}, which this build cannot \
                      use (needs ABI major {DRMTAP_ABI_MAJOR}, minor {DRMTAP_ABI_MINOR}, at least \
-                     v{DRMTAP_ABI_MAJOR}.{min_minor}.{min_patch}): {why}. Refusing to load; \
-                     falling back to PipeWire/portal."
+                     v{DRMTAP_ABI_MAJOR}.{min_minor}.{min_patch}): {why}. Refusing to load."
                 );
                 return None;
             }
@@ -347,9 +355,9 @@ impl DrmtapLib {
                         missing.push("drmtap_convert_dmabuf");
                     }
                     log::warn!(
-                        "libdrmtap {name} reports v{major}.{minor}.{patch} but does not export \
+                        "libdrmtap {name_display} reports v{major}.{minor}.{patch} but does not export \
                          {}: it is a stale or pre-release build, not the version it claims. \
-                         Refusing to load; falling back to PipeWire/portal.",
+                         Refusing to load.",
                         missing.join(", ")
                     );
                     return None;
@@ -366,11 +374,13 @@ impl DrmtapLib {
             // Log the load only now that every required symbol resolved: this fn still returns None on a missing one.
             let loaded_from = real
                 .as_ref()
-                .map_or_else(|| name.to_owned(), |p| p.display().to_string());
-            if loaded_from == name {
-                log::info!("libdrmtap loaded: {name} (v{major}.{minor}.{patch})");
+                .map_or_else(|| name_display.clone(), |p| p.display().to_string());
+            if loaded_from == name_display {
+                log::info!("libdrmtap loaded: {name_display} (v{major}.{minor}.{patch})");
             } else {
-                log::info!("libdrmtap loaded: {name} -> {loaded_from} (v{major}.{minor}.{patch})");
+                log::info!(
+                    "libdrmtap loaded: {name_display} -> {loaded_from} (v{major}.{minor}.{patch})"
+                );
             }
             let (no_node, no_devices) = (render_node.is_none(), list_devices.is_none());
             if (minor, patch) >= (4, 15) && (no_node || no_devices) {

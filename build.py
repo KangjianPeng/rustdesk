@@ -76,12 +76,6 @@ def make_parser():
         help='Build with unix file copy paste feature'
     )
     parser.add_argument(
-        '--drm',
-        action='store_true',
-        help='Linux only: build the DRM/KMS capture backend (bundles libdrmtap.so, '
-             'dlopen-ed in-process by the root service). Off by default.'
-    )
-    parser.add_argument(
         '--print-features',
         action='store_true',
         help='Print the cargo feature list these flags select, and exit without building. For a '
@@ -117,24 +111,6 @@ def make_parser():
     return parser
 
 
-def linux_packaging_branch():
-    """Which packaging path `main()` will take on THIS host.
-
-    MUST mirror the elif chain in main() (pacman / yum / zypper / else), and exists so `--drm` can
-    refuse a branch that is not drm-aware instead of silently producing a stock-named package with
-    the capture backend compiled in. Only the final `deb` branch reaches the custom deb packager, which
-    is what bundles libdrmtap, renames the package, adds Conflicts/Provides and asserts the staged
-    binary really is a drm build.
-    """
-    if os.path.isfile('/usr/bin/pacman'):
-        return 'pacman'
-    if os.path.isfile('/usr/bin/yum'):
-        return 'yum'
-    if os.path.isfile('/usr/bin/zypper'):
-        return 'zypper'
-    return 'deb'
-
-
 def get_features(args):
     features = ['use_dasp', 'dioxus-ui']
     if args.hwcodec:
@@ -143,29 +119,10 @@ def get_features(args):
         features.append('vram')
     if args.unix_file_copy_paste:
         features.append('unix-file-copy-paste')
-    if args.drm:
-        # Say so rather than quietly handing back a stock build: the backend is Linux-only, so on
-        # any other host the flag cannot be honoured and the resulting binary would look like a
-        # DRM build without being one.
-        if windows or osx:
-            raise Exception('--drm is Linux only')
-        # And only on the deb branch. The other three Linux paths (pacman/yum/zypper) package
-        # straight from `target/release` without bundling libdrmtap, without the rename, without
-        # Conflicts/Provides and without assert_staged_binary_is_drm() -- so they would emit a
-        # package NAMED `rustdesk` carrying the consent-bypass backend and the root-side uinput
-        # injection. The separate package name is the informed consent this feature rests on, so
-        # refuse rather than ship a stock-named build of it.
-        branch = linux_packaging_branch()
-        if branch != 'deb':
-            raise Exception(
-                f'--drm is only supported on the deb packaging path; this host would package via '
-                f'{branch}, which cannot bundle libdrmtap or name the package distinctly')
+    if not windows and not osx:
         features.append('drm')
-        # The display wake is its own compile gate on top of `drm`, and the unattended package is
-        # exactly where it belongs: that variant exists to reach a machine nobody is sitting at,
-        # and a machine whose screen went dark is the case it is for. Dropping `drm-wake` from
-        # this line builds the same capture backend with no wake code in the binary at all.
-        # It is ALSO switchable at runtime; see OPTION_ENABLE_DRM_DISPLAY_WAKE.
+        # Keep display wake in the same standard Linux build as DRM capture. It is also
+        # switchable at runtime through OPTION_ENABLE_DRM_DISPLAY_WAKE.
         features.append('drm-wake')
     if osx:
         if args.screencapturekit:
@@ -196,6 +153,7 @@ def generate_control_file(version):
     control_file_path = os.path.join(REPO_ROOT, "res", "DEBIAN", "control")
     system2('/bin/rm -rf %s' % control_file_path)
 
+    drm_depends = f", libdrm2 (>= 2.4.101), libegl1, libgles2, libc6 (>= {measured_glibc_floor()})"
     content = """Package: rustdesk
 Section: net
 Priority: optional
@@ -203,11 +161,11 @@ Version: %s
 Architecture: %s
 Maintainer: rustdesk <info@rustdesk.com>
 Homepage: https://rustdesk.com
-Depends: libgtk-3-0t64 | libgtk-3-0, libdav1d7, libwebkit2gtk-4.1-0, libxcb-randr0, libxdo3 | libxdo4, libxfixes3, libxcb-shape0, libxcb-xfixes0, libasound2t64 | libasound2, libsystemd0, curl, libva2, libva-drm2, libva-x11-2, libgstreamer-plugins-base1.0-0, gstreamer1.0-pipewire%s
+Depends: libgtk-3-0t64 | libgtk-3-0, libdav1d7, libwebkit2gtk-4.1-0, libxcb-randr0, libxdo3 | libxdo4, libxfixes3, libxcb-shape0, libxcb-xfixes0, libasound2t64 | libasound2, libsystemd0, curl, libva2, libva-drm2, libva-x11-2, libgstreamer-plugins-base1.0-0%s
 Recommends: libayatana-appindicator3-1
 Description: A remote control software.
 
-""" % (version, get_deb_arch(), get_deb_extra_depends() + get_deb_shared_depends())
+""" % (version, get_deb_arch(), get_deb_extra_depends() + get_deb_shared_depends() + drm_depends)
     file = open(control_file_path, "w")
     file.write(content)
     file.close()
@@ -256,10 +214,9 @@ def _prebuilt_dir_is_the_pinned_checkout(prebuilt_dir):
 
 
 def _validate_libdrmtap_pin():
-    # Called from build_libdrmtap_so(), NOT at import: a stock (non --drm) build must stay
-    # byte-identical to upstream in behaviour too, and leftover DRMTAP_* variables in the
-    # environment (or a malformed sha) must not be able to fail a build that never touches
-    # libdrmtap.
+    # Called from build_libdrmtap_so(), NOT at import: unrelated build commands must not be
+    # affected by DRMTAP_* environment overrides or a malformed sha when they do not package the
+    # Linux DRM runtime.
     # `or None` so an empty value reads as unset here exactly as it does in build_libdrmtap_so(),
     # which tests it for truthiness.
     prebuilt = os.environ.get('DRMTAP_PREBUILT_DIR') or None
@@ -411,8 +368,8 @@ def _assert_so_has_egl(so_path):
     # libdrmtap treats egl/glesv2 as OPTIONAL dependencies: without their headers and pkg-config
     # files, meson silently builds a CPU-only stub. That stub still exports every symbol the loader
     # checks for, so nothing downstream notices -- and the split architecture depends entirely on the
-    # unprivileged side EGL-detiling the scanout it receives. The result is a build where DRM capture
-    # quietly degrades to PipeWire on every tiled-scanout host, which is most of them.
+    # unprivileged side EGL-detiling the scanout it receives. Without it, the Linux DRM capture
+    # backend cannot initialize on tiled-scanout hosts.
     #
     # Assert on the ARTIFACT rather than passing an option that demands it: `-Degl=enabled` exists
     # only in libdrmtap past 0.4.15, and checking what was actually produced also catches a stale or
@@ -432,12 +389,9 @@ def _assert_so_has_egl(so_path):
         raise Exception(
             f'{so_path} looks like a CPU-only libdrmtap stub (missing '
             f'{", ".join(m.decode() for m in missing)}): the EGL detile path the split capture '
-            'depends on is not in it, and DRM capture would silently fall back to PipeWire. '
+            'depends on is not in it, so DRM capture cannot initialize on affected displays. '
             'Install the EGL development packages and rebuild (Debian/Ubuntu: libegl-dev '
             'libgles2-mesa-dev; Arch: mesa libglvnd).')
-
-
-DRM_PACKAGE_NAME = 'rustdesk-unattended-wayland'
 
 
 def assert_so_satisfies_the_runtime_abi_gate(so_path):
@@ -449,7 +403,7 @@ def assert_so_satisfies_the_runtime_abi_gate(so_path):
     assertion would still pass: the EGL check does not look at the version, the CI symbol contract
     does not call drmtap_version(), and the deb-contents regex matches any `libdrmtap.so.0.X.Y`.
     A green pipeline could therefore produce a deb in which DRM capture can never start, and the
-    only symptom on the host is one log line before it falls back to the portal.
+    host would have no working Wayland capture path.
 
     So parse the gate out of the Rust and apply it here, to the object being staged. This is the
     same rule, not a copy of the numbers: if someone bumps the constants, this reads the new ones.
@@ -531,40 +485,9 @@ def measured_glibc_floor():
     if not minor:
         raise Exception(
             f'could not measure a GLIBC_2.x floor from any staged object ({paths or "none found"}); '
-            'refusing to ship the unattended-wayland variant with an undeclared libc6 floor, which '
-            'is what lets it install on a host where libdrmtap can never load')
+            'refusing to ship a DRM-enabled package with an undeclared libc6 floor, which is what '
+            'lets it install on a host where libdrmtap can never load')
     return f'2.{minor}'
-
-
-def retarget_control_to_drm_variant():
-    # Rewrite the control file that generate_control_file just produced, instead of parameterizing that
-    # function: the stock packaging path stays exactly as upstream wrote it, and everything specific to
-    # this variant lives here. The variant installs the same files as the stock package, so it must
-    # conflict with and replace it: you install one or the other, never both. It also needs libdrmtap's
-    # own runtime deps, which the stock package has no reason to carry.
-    path = os.path.join(REPO_ROOT, 'res', 'DEBIAN', 'control')
-    floor = measured_glibc_floor()
-    print(f'[drm] {DRM_PACKAGE_NAME} libc6 floor measured at {floor}')
-    with open(path) as f:
-        lines = f.readlines()
-    out = []
-    for line in lines:
-        if line.startswith('Package: rustdesk'):
-            out.append(f'Package: {DRM_PACKAGE_NAME}\n')
-            out.append('Conflicts: rustdesk\nReplaces: rustdesk\nProvides: rustdesk\n')
-        elif line.startswith('Depends:'):
-            # 2.4.101 is where drmModeGetFB2 landed; below it libdrmtap loads and can never capture.
-            out.append(line.rstrip('\n') + ', libdrm2 (>= 2.4.101), libegl1, libgles2, '
-                       f'libc6 (>= {floor})\n')
-        else:
-            out.append(line)
-    body = ''.join(out)
-    # Fail loudly rather than silently shipping a package that says `rustdesk`: a stock control file
-    # that stopped matching either anchor would otherwise produce a variant deb wearing the stock name.
-    if f'Package: {DRM_PACKAGE_NAME}\n' not in body or 'libegl1' not in body:
-        raise Exception(f'could not retarget {path} to the drm variant; upstream control layout changed')
-    with open(path, 'w') as f:
-        f.write(body)
 
 
 DRMTAP_DLOPEN_MARKER = b'/usr/lib/rustdesk/libdrmtap.so.0'
@@ -591,11 +514,10 @@ def _carries_drmtap_marker(path, marker=DRMTAP_DLOPEN_MARKER):
 
 
 def assert_staged_binary_is_drm():
-    """The staged BINARY must really be a drm build before it is named the unattended-wayland
-    variant. That package conflicts with and replaces the stock one, so shipping a stock binary
-    under that name produces something that can never capture and cannot be installed alongside
-    what it replaced. The marker is the absolute dlopen path from drmtap_dl.rs, present only when
-    the feature is compiled in -- assert what was produced, not what was asked for.
+    """The staged binary must contain the DRM capture loader used by the Linux package.
+
+    The marker is the absolute dlopen path from drmtap_dl.rs, present only when the feature is
+    compiled in; assert what was produced, not what was requested.
 
     Called from BOTH packaging paths. It used to guard only one of them, and `--skip-cargo` (which
     is how CI packages) reaches the other, where nothing had rebuilt the binary at all.
@@ -604,25 +526,21 @@ def assert_staged_binary_is_drm():
                 + glob.glob('tmpdeb/usr/share/rustdesk/rustdesk') if os.path.isfile(p)]
     if not any(_carries_drmtap_marker(p) for p in binaries):
         raise Exception(
-            f'--drm was requested but the staged bundle does not look like a drm build (no '
+            f'the staged bundle does not look like a DRM build (no '
             f'{DRMTAP_DLOPEN_MARKER.decode()} dlopen path in {binaries or "any staged binary"}); '
-            'refusing to package it as the unattended-wayland variant, which conflicts with and '
-            'replaces the stock package but could never capture')
-    # And the WAKE half. `--drm` enables `drm-wake` too (see get_features), and the deb is named and
-    # documented as the variant that can reach a machine whose screen has gone dark. The dlopen
-    # marker above does not distinguish them: `--features drm` alone carries it and has no wake code
-    # at all. Asserting only the first half is how a deb can be named for a feature it does not have.
+            'refusing to package a Linux binary that cannot capture through DRM')
+    # The standard Linux build also includes display wake. The dlopen marker above does not
+    # distinguish the two features, so assert the wake path independently.
     if not any(_carries_drmtap_marker(p, DRMTAP_WAKE_MARKER) for p in binaries):
         raise Exception(
-            f'--drm was requested but the staged binary has no {DRMTAP_WAKE_MARKER.decode()} '
+            f'the staged binary has no {DRMTAP_WAKE_MARKER.decode()} '
             f'marker in {binaries or "any staged binary"}, so it was built without `drm-wake`; '
-            'refusing to package it as the unattended-wayland variant, which is named and '
-            'documented as the build that can wake an idle-disabled display. If this fired under '
-            '--skip-cargo, the cargo line that produced the bundle is missing the feature: '
+            'refusing to package it as the standard Linux build. If this fired under `--skip-cargo`, '
+            'the cargo line that produced the bundle is missing the feature: '
             '--features ...,drm,drm-wake')
 
 
-def build_deb_from_folder(version, binary_folder, want_drm=False):
+def build_deb_from_folder(version, binary_folder):
     source_dir = os.path.abspath(binary_folder)
     staging_dir = os.path.join(REPO_ROOT, 'tmpdeb')
     if os.path.isdir(staging_dir):
@@ -641,55 +559,22 @@ def build_deb_from_folder(version, binary_folder, want_drm=False):
     with open(polkit_script, 'w', encoding='utf-8') as polkit:
         polkit.write('#!/bin/sh\n')
     os.chmod(polkit_script, 0o755)
-    # Where the capture library comes from for a `--package <folder> --drm` build. Two shapes are
-    # supported, because two exist in practice: a bundle that already carries libdrmtap.so.0.*
-    # (someone staged it, e.g. a CI artifact), and a plain bundle, which is what every build path
-    # here actually produces -- the Dioxus deb builds the library straight into the staged deb, so
-    # nothing ever puts it inside the bundle folder. Demanding it in the bundle made this flag
-    # combination impossible to satisfy.
+    # Accept a package folder that already carries libdrmtap or build it alongside the staged binary.
     bundled_glob = glob.glob('tmpdeb/usr/share/rustdesk/libdrmtap.so.0.*')
     bundle_carries_so = any(os.path.isfile(p) and not os.path.islink(p) for p in bundled_glob)
-    # The variant must be decided by the EXPLICIT --drm request, not merely by what happens to be
-    # staged: a bundle that carries the .so must NOT be shipped as the consent-bypass variant when
-    # --drm was never passed.
-    if bundle_carries_so and not want_drm:
-        raise Exception(
-            'the staged bundle carries libdrmtap.so.0.* but --drm was not passed; refusing '
-            'to silently ship the consent-bypass unattended-wayland variant (pass --drm to '
-            'build it deliberately)')
-    if want_drm:
-        # Whichever shape we are in, the staged BINARY must really be a drm build. This is the
-        # property the old presence-of-the-.so test stood in for, badly: a stock binary packaged as
-        # the unattended-wayland variant would carry the consent-bypass name, conflict with and
-        # replace the stock package, and never be able to capture. The marker is the absolute
-        # dlopen path from drmtap_dl.rs, present only when the feature is compiled in -- the same
-        # kind of artifact assertion as _assert_so_has_egl, and for the same reason: assert what
-        # was produced, not what was asked for.
-        assert_staged_binary_is_drm()
-        if bundle_carries_so:
-            so = _single_real_so(bundled_glob, 'the staged --drm bundle')
-            # The THIRD artifact source, and the last one that was missing the check: --package
-            # takes the .so straight out of a bundle somebody else produced, so it has the same
-            # exposure as DRMTAP_PREBUILT_DIR (see the comment on that branch). A CPU-only stub
-            # would ship, the loader would accept it, and capture would degrade to PipeWire
-            # without a word. A bundle produced before the helper was disabled is caught here too,
-            # which is the point: it must not be repackaged into a deb.
-            _assert_so_has_egl(so)
-            _assert_so_has_no_helper(so)
-            stage_libdrmtap_into_deb(so)
-            system2(f'rm -f "{so}"')
-            system2('rm -f tmpdeb/usr/share/rustdesk/libdrmtap.so tmpdeb/usr/share/rustdesk/libdrmtap.so.0')
-        else:
-            # Build it here, exactly as the Dioxus deb path does (build_libdrmtap_so asserts the
-            # EGL backend itself). The library is independent of the staged binary.
-            stage_libdrmtap_into_deb(build_libdrmtap_so())
+    assert_staged_binary_is_drm()
+    if bundle_carries_so:
+        so = _single_real_so(bundled_glob, 'the staged package bundle')
+        _assert_so_has_egl(so)
+        _assert_so_has_no_helper(so)
+        stage_libdrmtap_into_deb(so)
+        system2(f'rm -f "{so}"')
+        system2('rm -f tmpdeb/usr/share/rustdesk/libdrmtap.so tmpdeb/usr/share/rustdesk/libdrmtap.so.0')
+    else:
+        stage_libdrmtap_into_deb(build_libdrmtap_so())
 
     system2('mkdir -p tmpdeb/DEBIAN')
     generate_control_file(version)
-    # Keyed on the EXPLICIT request, not on what happened to be staged: by here a --drm build has
-    # its library in tmpdeb whichever of the two shapes it came from.
-    if want_drm:
-        retarget_control_to_drm_variant()
     system2('cp -a res/DEBIAN/* tmpdeb/DEBIAN/')
     md5_file_folder("tmpdeb/")
     system2('dpkg-deb -b tmpdeb rustdesk.deb;')
@@ -697,11 +582,9 @@ def build_deb_from_folder(version, binary_folder, want_drm=False):
     system2('/bin/rm -rf tmpdeb/')
     os.unlink(os.path.join(REPO_ROOT, 'res', 'DEBIAN', 'control'))
     os.rename('rustdesk.deb', 'rustdesk-%s.deb' % version)
-    if want_drm:
-        os.rename('rustdesk-%s.deb' % version, f'{DRM_PACKAGE_NAME}-{version}.deb')
 
 
-def build_dioxus_deb(version, features, want_drm=False):
+def build_dioxus_deb(version, features):
     if not skip_cargo:
         system2(f'cargo build --locked --release --features {features} --bin rustdesk')
     package_root = os.path.join(REPO_ROOT, 'target', 'release', 'package-root')
@@ -709,7 +592,7 @@ def build_dioxus_deb(version, features, want_drm=False):
         shutil.rmtree(package_root)
     os.makedirs(package_root, exist_ok=True)
     shutil.copy2(os.path.join(REPO_ROOT, 'target', 'release', 'rustdesk'), package_root)
-    build_deb_from_folder(version, package_root, want_drm)
+    build_deb_from_folder(version, package_root)
 
 
 def build_dioxus_dmg(version, features):
@@ -750,7 +633,7 @@ def main():
         skip_cargo = True
     package = args.package
     if package:
-        build_deb_from_folder(version, package, args.drm)
+        build_deb_from_folder(version, package)
         return
     res_dir = 'resources'
     if windows:
@@ -785,6 +668,7 @@ def main():
         # pacman -S -needed base-devel
         system2("sed -i 's/pkgver=.*/pkgver=%s/g' res/PKGBUILD" % version)
         system2('cargo build --locked --release --features ' + features)
+        build_libdrmtap_so()
         system2('strip target/release/rustdesk')
         system2('ln -sfn res/pacman_install pacman_install')
         system2('ln -sfn res/PKGBUILD PKGBUILD')
@@ -794,6 +678,7 @@ def main():
         # pacman -U ./rustdesk.pkg.tar.zst
     elif os.path.isfile('/usr/bin/yum'):
         system2('cargo build --locked --release --features ' + features)
+        build_libdrmtap_so()
         system2('strip target/release/rustdesk')
         system2(
             "sed -i 's/Version:    .*/Version:    %s/g' res/rpm.spec" % version)
@@ -804,6 +689,7 @@ def main():
         # yum localinstall rustdesk.rpm
     elif os.path.isfile('/usr/bin/zypper'):
         system2('cargo build --locked --release --features ' + features)
+        build_libdrmtap_so()
         system2('strip target/release/rustdesk')
         system2(
             "sed -i 's/Version:    .*/Version:    %s/g' res/rpm-suse.spec" % version)
@@ -819,7 +705,7 @@ def main():
             else:
                 build_dioxus_dmg(version, features)
         else:
-            build_dioxus_deb(version, features, args.drm)
+            build_dioxus_deb(version, features)
         return
 def md5_file(fn):
     md5 = hashlib.md5(open('tmpdeb/' + fn, 'rb').read()).hexdigest()

@@ -356,9 +356,6 @@ struct DisplayHealth {
     /// The dma-buf convert failed for this display. The COMMON cause is multi-GPU: our render node
     /// is not the GPU that exported the scanout. Follows the monitor for the process run.
     prefer_cpu: bool,
-    /// The PipeWire fallback for this display was rejected on geometry (a transposed stream), so
-    /// the lone-display carve-out in `mark_demoted_displays` must not keep advertising it online.
-    fallback_rejected: bool,
 }
 
 impl DisplayHealth {
@@ -370,7 +367,6 @@ impl DisplayHealth {
             last_build: None,
             rapid_builds: 0,
             prefer_cpu: false,
-            fallback_rejected: false,
         }
     }
 
@@ -572,8 +568,8 @@ impl IpcDrmCapturer {
         if h.zero_frame_streak == DRM_GRAB_MAX_FAILURES {
             h.demotes += 1;
             log::warn!(
-                "drm: display {} produced no frame in {} sessions; using PipeWire for it, \
-                 retrying DRM in {:?} (demotion {})",
+                "drm: display {} produced no frame in {} sessions; pausing DRM capture for {:?} \
+                 (demotion {})",
                 self.display,
                 h.zero_frame_streak,
                 demote_cooldown(h.demotes),
@@ -703,7 +699,6 @@ impl TraitCapturer for IpcDrmCapturer {
                             h.zero_frame_streak = 0;
                             h.demotes = 0;
                             h.since = Instant::now();
-                            h.fallback_rejected = false;
                         }
                     }
                 }
@@ -1940,7 +1935,7 @@ fn probe_and_publish() -> Availability {
 }
 
 /// The boolean form for capture-path callers, where an unsettled probe and a definitive "no"
-/// route the same way (into the non-DRM fallback).
+/// both mean that the DRM capturer cannot be started yet.
 pub(crate) fn is_available() -> bool {
     availability() == Availability::Available
 }
@@ -2165,48 +2160,10 @@ pub(super) async fn refresh_displays_for_login() {
     }
 }
 
-/// Mirrors get_display_infos: only a MULTI-display host advertises a demoted display.
-pub(super) fn display_count_and_any_demoted() -> Option<(usize, bool)> {
-    // Snapshot the identity keys under DRM_STATE, then consult health with DRM_STATE RELEASED --
-    // same order as get_display_infos: never hold DRM_STATE while taking a per-display map.
-    let (len, keys): (usize, Vec<String>) = match &*DRM_STATE.lock().unwrap() {
-        ProbeState::Available(_, list) => (
-            list.len(),
-            if list.len() > 1 {
-                list.iter().map(connector_key).collect()
-            } else {
-                Vec::new()
-            },
-        ),
-        _ => return None,
-    };
-    let any_demoted = if len > 1 {
-        let health = DRM_DISPLAY_HEALTH.lock().unwrap();
-        keys.iter()
-            .any(|k| health.get(k).is_some_and(|h| h.demoted()))
-    } else {
-        false
-    };
-    Some((len, any_demoted))
-}
-
-// A multi-display portal stream cannot replace one demoted connector. Keep its index but mark it
-// offline; a single connector remains usable through the whole-desktop fallback - unless that
-// fallback itself was rejected on geometry, in which case advertising the lone display online
-// would restart-loop the video service against a stream nothing can serve.
+// A demoted connector cannot be served by the DRM stream. Mark it offline until the cooldown
+// expires so the client does not repeatedly create a capturer that is known to fail.
 fn mark_demoted_displays(list: &[DrmDisplayInfo], infos: &mut [DisplayInfo]) {
     let health = DRM_DISPLAY_HEALTH.lock().unwrap();
-    if list.len() <= 1 {
-        if let (Some(display), Some(info)) = (list.first(), infos.first_mut()) {
-            if health
-                .get(&connector_key(display))
-                .is_some_and(|health| health.demoted() && health.fallback_rejected)
-            {
-                info.online = false;
-            }
-        }
-        return;
-    }
     for (display, info) in list.iter().zip(infos.iter_mut()) {
         if health
             .get(&connector_key(display))
@@ -2215,21 +2172,6 @@ fn mark_demoted_displays(list: &[DrmDisplayInfo], infos: &mut [DisplayInfo]) {
             info.online = false;
         }
     }
-}
-
-/// The PipeWire fallback for this display was rejected on geometry; recorded so the lone-display
-/// carve-out above stops advertising a display nothing can serve. Cleared by a delivered frame
-/// and by the demote-cooldown re-arm.
-pub(super) fn mark_fallback_rejected(display_idx: usize) {
-    let Some(expected) = display_info_of(display_idx as i32) else {
-        return;
-    };
-    DRM_DISPLAY_HEALTH
-        .lock()
-        .unwrap()
-        .entry(connector_key(&expected))
-        .or_insert_with(DisplayHealth::new)
-        .fallback_rejected = true;
 }
 
 fn primary_index_from_assignment(assignment: &[Option<usize>], primary: usize) -> usize {
@@ -2484,13 +2426,11 @@ pub(super) fn get_capturer_info(
             if h.zero_frame_streak >= DRM_GRAB_MAX_FAILURES {
                 if h.demoted() {
                     bail!(
-                        "drm capture for display {display_idx} repeatedly produced no frame; using PipeWire"
+                        "drm capture for display {display_idx} is temporarily unavailable after repeated frame failures"
                     );
                 }
                 h.zero_frame_streak = 0;
                 h.since = Instant::now();
-                // The cooldown re-arms DRM for this display, so the fallback verdict restarts too.
-                h.fallback_rejected = false;
             }
         }
     }
@@ -2508,13 +2448,13 @@ pub(super) fn get_capturer_info(
         h.last_build = Some(now);
         if h.rapid_builds >= RAPID_REBUILD_MAX {
             log::warn!(
-                "drm: display {display_idx} rebuilt {} times within {RAPID_REBUILD_WINDOW:?}; flapping, falling back to PipeWire",
+                "drm: display {display_idx} rebuilt {} times within {RAPID_REBUILD_WINDOW:?}; pausing DRM capture",
                 h.rapid_builds
             );
             h.zero_frame_streak = DRM_GRAB_MAX_FAILURES;
             h.since = now;
             h.demotes += 1;
-            bail!("drm capture for display {display_idx} is flapping; using PipeWire");
+            bail!("drm capture for display {display_idx} is flapping; retry after cooldown");
         }
     }
     let ndisplay = displays.len();

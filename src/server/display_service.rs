@@ -784,33 +784,6 @@ pub(super) fn get_display_info(idx: usize) -> Option<DisplayInfo> {
     SYNC_DISPLAYS.lock().unwrap().displays.get(idx).cloned()
 }
 
-// True when at least one advertised (synced) display is NOT served by the DRM/KMS capture path,
-// i.e. a mixed DRM + PipeWire session. The cursor service (platform::linux::get_cursor /
-// get_cursor_data) uses this to decide whether a hidden DRM hardware-cursor sentinel is
-// authoritative: in a pure-DRM session it is (the pointer is genuinely off every captured CRTC),
-// but in a mixed session the sentinel only means the pointer moved onto a PipeWire-served display,
-// whose cursor must come from the normal path instead of being hidden everywhere.
-//
-// When DRM capture is active the advertised list is enumerated from the DRM display list, so a DRM
-// list shorter than the synced list means at least one advertised display is served by PipeWire.
-#[cfg(all(target_os = "linux", feature = "drm"))]
-pub fn has_non_drm_backed_display() -> bool {
-    match super::drm_capturer::display_count_and_any_demoted() {
-        // A display served by PipeWire is either ABSENT from the DRM list (a shorter count, e.g. a
-        // pure-portal display) or PRESENT-BUT-DEMOTED (kept in place at the same index and marked
-        // offline so the index space stays aligned -- see get_display_infos). The count check alone
-        // misses the demotion case (same count), so a demoted display is treated as non-DRM-backed
-        // too. This is what gates the hidden-cursor sentinel: it stays authoritative only in a
-        // pure-DRM session. The scalar accessor is deliberate: this is polled every cursor tick
-        // while the sentinel is active, and cloning + geometry-augmenting the whole list per tick
-        // (what get_display_infos does) answered the same two facts.
-        Some((count, any_demoted)) => {
-            count < SYNC_DISPLAYS.lock().unwrap().displays.len() || any_demoted
-        }
-        None => false,
-    }
-}
-
 // Display to DisplayInfo
 // The DisplayInfo is be sent to the peer.
 pub(super) fn check_update_displays(all: &Vec<Display>) {

@@ -693,19 +693,9 @@ pub fn get_cursor() -> ResultType<Option<u64>> {
     // polled there is a live session, which is the case the latch reads correctly.
     #[cfg(feature = "drm")]
     if !is_x11() {
-        if let Some(id) = crate::server::drm_capturer::drm_cursor_id() {
-            // In a mixed DRM + PipeWire session the DRM streams only cover the DRM-backed displays;
-            // when the pointer sits on a PipeWire-served display every DRM stream reports the hidden
-            // sentinel. Returning that sentinel here would hide the cursor globally, including on the
-            // PipeWire display where it is still visible, so only report a hidden DRM cursor when it
-            // is authoritative -- a pure-DRM session. A visible DRM cursor is always authoritative;
-            // otherwise fall through to the normal cursor path.
-            if id != scrap::drm_reader::HIDDEN_CURSOR_ID
-                || !crate::server::display_service::has_non_drm_backed_display()
-            {
-                return Ok(Some(id));
-            }
-        }
+        // Wayland cursor state is delivered with the DRM frame stream. Do not query XFixes here:
+        // an Xwayland cursor can belong to a different surface and is not the compositor cursor.
+        return Ok(crate::server::drm_capturer::drm_cursor_id());
     }
     let mut res = None;
     DISPLAY.with(|conn| {
@@ -764,22 +754,16 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     #[cfg(feature = "drm")]
     if !is_x11() {
         if let Some(c) = crate::server::drm_capturer::drm_cursor() {
-            // See get_cursor(): a hidden DRM sentinel is authoritative only in a pure-DRM session. In
-            // a mixed DRM + PipeWire session fall through so the PipeWire display's cursor is served
-            // by the normal path instead of being hidden everywhere.
-            if c.id != scrap::drm_reader::HIDDEN_CURSOR_ID
-                || !crate::server::display_service::has_non_drm_backed_display()
-            {
-                let mut cd: CursorData = Default::default();
-                cd.id = c.id;
-                cd.width = c.width;
-                cd.height = c.height;
-                cd.hotx = c.hotx;
-                cd.hoty = c.hoty;
-                cd.colors = c.colors.into();
-                return Ok(cd);
-            }
+            let mut cd: CursorData = Default::default();
+            cd.id = c.id;
+            cd.width = c.width;
+            cd.height = c.height;
+            cd.hotx = c.hotx;
+            cd.hoty = c.hoty;
+            cd.colors = c.colors.into();
+            return Ok(cd);
         }
+        bail!("Wayland DRM cursor data is not available")
     }
     let mut res = None;
     DISPLAY.with(|conn| {
@@ -1270,8 +1254,8 @@ pub fn start_os_service() {
     // Builder, like every other thread this feature starts: `thread::spawn` PANICS if the thread
     // cannot be created (EAGAIN under a thread-count or memory limit), and here that panic would
     // unwind out of `start_os_service` -- taking down the root service itself, for a feature whose
-    // failure should only cost DRM capture. Losing the producer leaves the consumer to fall back to
-    // PipeWire/X11, which is the same path a host without the feature takes.
+    // failure should only cost DRM capture. A Wayland session remains unavailable until the
+    // producer can be started again; it must not silently switch to the old video backend.
     #[cfg(feature = "drm")]
     if let Err(err) = std::thread::Builder::new()
         .name("drm-producer".into())
@@ -1281,7 +1265,7 @@ pub fn start_os_service() {
     {
         log::warn!(
             "failed to spawn the drm capture producer thread: {err}; DRM capture is off for \
-             this boot and the consumer falls back to PipeWire/X11"
+             this boot"
         );
     }
 

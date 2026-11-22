@@ -7,7 +7,7 @@ arch=('x86_64')
 url=""
 license=('AGPL-3.0')
 groups=()
-depends=('gtk3' 'dav1d' 'libvpx' 'libyuv' 'opus' 'aom' 'ffmpeg' 'webkit2gtk-4.1' 'xdotool' 'libxcb' 'libxfixes' 'alsa-lib' 'libva' 'libappindicator-gtk3' 'gst-plugins-base' 'gst-plugin-pipewire')
+depends=('gtk3' 'dav1d' 'libvpx' 'libyuv' 'opus' 'aom' 'ffmpeg' 'webkit2gtk-4.1' 'xdotool' 'libxcb' 'libxfixes' 'alsa-lib' 'libva' 'libappindicator-gtk3' 'gst-plugins-base' 'libdrm' 'libglvnd')
 makedepends=()
 checkdepends=()
 optdepends=()
@@ -30,4 +30,13 @@ package() {
   install -Dm 644 $HBB/res/rustdesk-link.desktop -t "${pkgdir}/usr/share/applications"
   install -Dm 644 $HBB/res/128x128@2x.png "${pkgdir}/usr/share/icons/hicolor/256x256/apps/rustdesk.png"
   install -Dm 644 $HBB/res/scalable.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/rustdesk.svg"
+  drmtap_dir="${DRMTAP_PREBUILT_DIR:-${HBB}/third_party/libdrmtap/build-pkg}"
+  shopt -s nullglob
+  drmtap_objects=("${drmtap_dir}"/libdrmtap.so.0.*)
+  if (( ${#drmtap_objects[@]} != 1 )) || [[ ! -f "${drmtap_objects[0]}" || -L "${drmtap_objects[0]}" ]]; then
+    printf 'Expected exactly one built libdrmtap.so.0.* in %s\n' "$drmtap_dir" >&2
+    return 1
+  fi
+  install -Dm 755 "${drmtap_objects[0]}" -t "${pkgdir}/usr/lib/rustdesk"
+  ln -s "$(basename "${drmtap_objects[0]}")" "${pkgdir}/usr/lib/rustdesk/libdrmtap.so.0"
 }

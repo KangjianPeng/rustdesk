@@ -592,7 +592,8 @@ impl DrmReader {
                     return Err(io::ErrorKind::WouldBlock.into());
                 }
                 if errno == hbb_common::libc::ENOTSUP {
-                    // A distinct error so the caller degrades to the mapped/PipeWire path instead of tight-looping a rebuild.
+                    // A distinct error lets the producer stop this export path without tight-looping
+                    // a rebuild. The mapped path remains an explicitly requested DRM mode.
                     return Err(io::Error::new(
                         io::ErrorKind::Unsupported,
                         "drmtap_grab_desc: no transferable dma-buf (ENOTSUP)",
