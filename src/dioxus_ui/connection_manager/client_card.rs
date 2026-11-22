@@ -25,7 +25,10 @@ pub(super) fn ClientCard(
             if client.is_file_transfer { p { "File transfer" } }
             if client.is_terminal { p { "Terminal" } }
             div { class: "flex flex-wrap gap-2 [&>.inline-flex]:min-h-9 [&>.inline-flex]:rounded-[5px] [&>.inline-flex]:border [&>.inline-flex>button]:min-h-9 [&>.inline-flex>button]:px-[14px] [&>.inline-flex>button]:py-2",
-                if !client.disconnected && !client.authorized {
+                if !client.disconnected
+                    && !client.authorized
+                    && crate::ui_interface::get_option(base::config::keys::OPTION_APPROVE_MODE) != "password"
+                {
                     Button { onclick: move |_| { spawn(async move {
                         if !allow_action(id).await { return; }
                         ui_cm_interface::authorize(id);

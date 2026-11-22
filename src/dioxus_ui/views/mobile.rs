@@ -526,7 +526,11 @@ fn MobileRemotePage() -> Element {
                             let Some(active) = current.as_ref() else { return; };
                             active.send_chat(text.clone());
                             update_ui_state(state.ui_state, |ui| {
-                                Arc::make_mut(&mut ui.chat).push(ChatMessage { outgoing: true, text });
+                                let chat = Arc::make_mut(&mut ui.chat);
+                                if chat.len() >= 100 {
+                                    chat.remove(0);
+                                }
+                                chat.push(ChatMessage { outgoing: true, text });
                             });
                             chat_text.set(String::new());
                         },

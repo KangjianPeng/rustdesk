@@ -290,7 +290,11 @@ impl InvokeUiSession for DioxusHandler {
             };
             #[cfg(any(target_os = "android", target_os = "ios"))]
             {
-                Arc::make_mut(&mut state.chat).push(message);
+                let chat = Arc::make_mut(&mut state.chat);
+                if chat.len() >= 100 {
+                    chat.remove(0);
+                }
+                chat.push(message);
             }
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             Arc::make_mut(&mut Arc::make_mut(&mut state.remote).chat).push(message);
