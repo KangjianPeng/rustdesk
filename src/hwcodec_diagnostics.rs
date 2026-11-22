@@ -334,10 +334,10 @@ fn benchmark_json() -> String {
             None => {
                 let data: &[u8] = match info.format {
                     DataFormat::H264 => {
-                        include_bytes!("../third_party/hwcodec-vendor/src/res/720p.h264")
+                        include_bytes!("../third_party/hwcodec-vendor/src/res/1080p.h264")
                     }
                     DataFormat::H265 => {
-                        include_bytes!("../third_party/hwcodec-vendor/src/res/720p.h265")
+                        include_bytes!("../third_party/hwcodec-vendor/src/res/1080p.h265")
                     }
                     _ => continue,
                 };

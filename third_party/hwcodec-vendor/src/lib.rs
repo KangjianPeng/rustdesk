@@ -67,8 +67,8 @@ mod tests {
             EncodeContext {
                 name: String::new(),
                 mc_name: None,
-                width: 1280,
-                height: 720,
+                width: 1920,
+                height: 1080,
                 pixfmt: AV_PIX_FMT_NV12,
                 align: 0,
                 fps: 30,

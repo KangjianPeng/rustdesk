@@ -816,8 +816,8 @@ pub fn check_available_hwcodec() -> String {
     let ctx = EncodeContext {
         name: String::from(""),
         mc_name: None,
-        width: 1280,
-        height: 720,
+        width: 1920,
+        height: 1080,
         pixfmt: DEFAULT_PIXFMT,
         align: HW_STRIDE_ALIGN as _,
         kbs: 1000,

@@ -4,6 +4,23 @@ use std::{
     path::{Path, PathBuf},
 };
 
+fn bindgen_builder() -> bindgen::Builder {
+    let builder = bindgen::builder();
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("android") {
+        return builder;
+    }
+
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    let target = match target_arch.as_str() {
+        "aarch64" => "aarch64-linux-android28",
+        "arm" => "armv7a-linux-androideabi28",
+        "x86" => "i686-linux-android28",
+        "x86_64" => "x86_64-linux-android28",
+        _ => return builder,
+    };
+    builder.clang_arg(format!("--target={target}"))
+}
+
 fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let externals_dir = manifest_dir.join("externals");
@@ -25,7 +42,7 @@ fn build_common(builder: &mut Build) {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
     let common_dir = manifest_dir.join("cpp").join("common");
-    bindgen::builder()
+    bindgen_builder()
         .header(common_dir.join("common.h").to_string_lossy().to_string())
         .header(common_dir.join("callback.h").to_string_lossy().to_string())
         .rustified_enum("*")
@@ -267,7 +284,7 @@ mod ffmpeg {
             .join("ffmpeg_ffi.h")
             .to_string_lossy()
             .to_string();
-        bindgen::builder()
+        super::bindgen_builder()
             .header(ffi_header)
             .rustified_enum("*")
             .generate()
@@ -283,7 +300,7 @@ mod ffmpeg {
             .join("ffmpeg_ram_ffi.h")
             .to_string_lossy()
             .to_string();
-        bindgen::builder()
+        super::bindgen_builder()
             .header(ffi_header)
             .rustified_enum("*")
             .generate()
@@ -304,7 +321,7 @@ mod ffmpeg {
             .join("ffmpeg_vram_ffi.h")
             .to_string_lossy()
             .to_string();
-        bindgen::builder()
+        super::bindgen_builder()
             .header(ffi_header)
             .rustified_enum("*")
             .generate()
@@ -321,7 +338,7 @@ mod ffmpeg {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let mux_dir = manifest_dir.join("cpp").join("mux");
         let mux_header = mux_dir.join("mux_ffi.h").to_string_lossy().to_string();
-        bindgen::builder()
+        super::bindgen_builder()
             .header(mux_header)
             .rustified_enum("*")
             .generate()
@@ -351,7 +368,7 @@ mod sdk {
         println!("cargo:rerun-if-changed=src");
         println!("cargo:rerun-if-changed={}", common_dir.display());
         println!("cargo:rerun-if-changed={}", externals_dir.display());
-        bindgen::builder()
+        super::bindgen_builder()
             .header(&nv_dir.join("nv_ffi.h").to_string_lossy().to_string())
             .rustified_enum("*")
             .generate()
@@ -416,7 +433,7 @@ mod sdk {
         let amf_dir = manifest_dir.join("cpp").join("amf");
         println!("cargo:rerun-if-changed=src");
         println!("cargo:rerun-if-changed={}", externals_dir.display());
-        bindgen::builder()
+        super::bindgen_builder()
             .header(amf_dir.join("amf_ffi.h").to_string_lossy().to_string())
             .rustified_enum("*")
             .generate()
@@ -458,7 +475,7 @@ mod sdk {
         let mfx_dir = manifest_dir.join("cpp").join("mfx");
         println!("cargo:rerun-if-changed=src");
         println!("cargo:rerun-if-changed={}", externals_dir.display());
-        bindgen::builder()
+        super::bindgen_builder()
             .header(&mfx_dir.join("mfx_ffi.h").to_string_lossy().to_string())
             .rustified_enum("*")
             .generate()

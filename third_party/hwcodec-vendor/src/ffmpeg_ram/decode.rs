@@ -256,8 +256,8 @@ impl Decoder {
         }
 
         let mut res = Vec::<CodecInfo>::new();
-        let buf264 = &crate::common::DATA_H264_720P[..];
-        let buf265 = &crate::common::DATA_H265_720P[..];
+        let buf264 = &crate::common::DATA_H264_1080P[..];
+        let buf265 = &crate::common::DATA_H265_1080P[..];
 
         for codec in codecs {
             // Skip if this format already exists in results

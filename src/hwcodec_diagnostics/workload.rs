@@ -1,8 +1,8 @@
 use hbb_common::{bail, ResultType};
 use scrap::{EncodeYuvFormat, Pixfmt};
 
-pub(super) const WIDTH: usize = 1280;
-pub(super) const HEIGHT: usize = 720;
+pub(super) const WIDTH: usize = 1920;
+pub(super) const HEIGHT: usize = 1080;
 pub(super) const FPS: usize = 30;
 pub(super) const ITERATIONS: usize = FPS * 2;
 

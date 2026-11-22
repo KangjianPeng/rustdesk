@@ -145,8 +145,8 @@ pub fn available() -> Vec<DecodeContext> {
 
     let mut outputs = Vec::<DecodeContext>::new();
     let mut exclude_luid_formats = Vec::<(i64, i32)>::new();
-    let buf264 = &crate::common::DATA_H264_720P[..];
-    let buf265 = &crate::common::DATA_H265_720P[..];
+    let buf264 = &crate::common::DATA_H264_1080P[..];
+    let buf265 = &crate::common::DATA_H265_1080P[..];
 
     for input in inputs {
         debug!(
