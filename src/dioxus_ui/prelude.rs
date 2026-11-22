@@ -35,6 +35,9 @@ pub(super) use std::{
     time::Duration,
 };
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub(super) use super::session::send_touch_mouse_event;
+
 pub(super) use super::{
     chrome::AppChrome,
     common::{

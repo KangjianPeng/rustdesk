@@ -1,6 +1,7 @@
 use super::prelude::*;
 use dioxus::desktop::{
     launch::launch_virtual_dom_blocking,
+    tao::dpi::LogicalPosition,
     wry::http::{header, HeaderValue, Request, Response, StatusCode},
     Config, LogicalSize, WindowBuilder,
 };
@@ -20,8 +21,12 @@ pub(super) fn launch(app: fn() -> Element, args: Vec<String>, title: String) {
         .with_decorations(false);
     let window = if manager {
         window
-            .with_inner_size(LogicalSize::new(360.0, 280.0))
-            .with_min_inner_size(LogicalSize::new(320.0, 220.0))
+            .with_inner_size(connection_manager::window_size(false))
+            .with_min_inner_size(connection_manager::window_size(false))
+            // The on-window callback docks it; an explicit position prevents dx debug state
+            // from moving it back to the main window's last position afterwards.
+            .with_position(LogicalPosition::new(0, 0))
+            .with_always_on_top(true)
     } else {
         window.with_inner_size(LogicalSize::new(1280.0, 720.0))
     };
@@ -40,7 +45,53 @@ pub(super) fn launch(app: fn() -> Element, args: Vec<String>, title: String) {
     } else {
         config
     };
+    let config = if manager {
+        config.with_on_window(|window, _| position_connection_manager(&window, false))
+    } else {
+        config
+    };
     launch_virtual_dom_blocking(dom, config);
+}
+
+pub(super) fn position_connection_manager(
+    window: &dioxus::desktop::tao::window::Window,
+    chat_open: bool,
+) {
+    let width = connection_manager::window_size(chat_open).width;
+    #[cfg(target_os = "linux")]
+    {
+        use dioxus::desktop::tao::platform::unix::WindowExtUnix;
+        use gtk::prelude::*;
+
+        let gtk_window = window.gtk_window();
+        let display = gtk_window.display();
+        if display.type_().name() == "GdkX11Display" {
+            let monitor = gtk_window
+                .window()
+                .and_then(|surface| display.monitor_at_window(&surface))
+                .or_else(|| display.primary_monitor())
+                .or_else(|| display.monitor(0));
+            if let Some(monitor) = monitor {
+                let work = monitor.workarea();
+                gtk_window.move_(work.x() + (work.width() - width as i32).max(0), work.y());
+            }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    if let Some(monitor) = window
+        .current_monitor()
+        .or_else(|| window.primary_monitor())
+    {
+        use dioxus::desktop::tao::dpi::PhysicalPosition;
+
+        let width = (width * monitor.scale_factor()).round() as u32;
+        let origin = monitor.position();
+        let offset = monitor.size().width.saturating_sub(width) as i32;
+        window.set_outer_position(PhysicalPosition::new(
+            origin.x.saturating_add(offset),
+            origin.y,
+        ));
+    }
 }
 
 #[cfg(target_os = "linux")]

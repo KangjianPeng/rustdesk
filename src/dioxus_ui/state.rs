@@ -21,6 +21,8 @@ pub(super) struct AppState {
     pub(super) peer_search_text: Signal<String>,
     pub(super) peer_view_mode: Signal<String>,
     pub(super) peer_sort: Signal<String>,
+    #[cfg(target_os = "android")]
+    pub(super) mobile_chat_id: Signal<i32>,
     pub(super) peer_refresh: Signal<u64>,
     pub(super) peer_cards: Signal<Vec<PeerCardData>>,
     pub(super) session: Signal<Option<Session<DioxusHandler>>>,

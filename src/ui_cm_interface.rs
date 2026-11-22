@@ -4,7 +4,7 @@ use crate::ipc::Connection;
 use crate::ipc::{self, Data};
 #[cfg(target_os = "windows")]
 use crate::{clipboard::ClipboardSide, ipc::ClipboardNonFile};
-#[cfg(target_os = "android")]
+#[cfg(not(target_os = "ios"))]
 use base::config::keys::OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW;
 #[cfg(target_os = "windows")]
 use base::config::keys::*;
@@ -17,8 +17,6 @@ use base::{
 };
 #[cfg(target_os = "windows")]
 use clipboard::ContextSend;
-#[cfg(target_os = "android")]
-use hbb_common::config::option2bool;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::tokio::sync::mpsc::unbounded_channel;
 #[cfg(target_os = "windows")]
@@ -407,15 +405,31 @@ pub fn send_chat(id: i32, text: String) {
     }
 }
 
+#[cfg(not(target_os = "ios"))]
+pub fn can_modify_permission(name: &str) -> bool {
+    name == "keyboard"
+        || crate::get_builtin_option(OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW) != "N"
+}
+
+#[cfg(not(target_os = "ios"))]
+pub fn switch_permission(id: i32, name: String, enabled: bool) {
+    if !can_modify_permission(&name) {
+        log::debug!(
+            "blocked cm switch_permission by policy, permission={}, enabled={}",
+            name,
+            enabled
+        );
+        return;
+    }
+    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
+        allow_err!(client.tx.send(Data::SwitchPermission { name, enabled }));
+    }
+}
+
 #[inline]
 #[cfg(target_os = "android")]
 pub fn switch_permission_all(name: String, enabled: bool) {
-    if name != "keyboard"
-        && !option2bool(
-            OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW,
-            &crate::get_builtin_option(OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW),
-        )
-    {
+    if !can_modify_permission(&name) {
         log::info!(
             "blocked cm switch_permission_all by policy, permission={}, enabled={}",
             name,

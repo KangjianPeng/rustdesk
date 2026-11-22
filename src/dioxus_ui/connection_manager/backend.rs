@@ -10,9 +10,9 @@ use std::{
 };
 
 #[derive(Clone, Default)]
-pub(super) struct ManagerState {
-    pub(super) clients: BTreeMap<i32, Client>,
-    pub(super) messages: VecDeque<(i32, String)>,
+pub(in crate::dioxus_ui) struct ManagerState {
+    pub(in crate::dioxus_ui) clients: BTreeMap<i32, Client>,
+    pub(in crate::dioxus_ui) messages: VecDeque<(i32, String)>,
     pub(super) notice: String,
     pub(super) show_elevation: bool,
     pub(super) needs_deploy: bool,
@@ -67,9 +67,6 @@ pub(super) async fn allow_action(id: i32) -> bool {
         ui_cm_interface::check_click_time(id);
         hbb_common::tokio::time::sleep(std::time::Duration::from_millis(120)).await;
         if click_time.saturating_sub(ui_cm_interface::get_click_time()) <= 120 {
-            STATE.send_modify(|state| {
-                state.notice = "Remote input cannot modify incoming connections.".to_owned()
-            });
             return false;
         }
     }

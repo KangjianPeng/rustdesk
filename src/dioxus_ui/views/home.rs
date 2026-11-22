@@ -32,6 +32,8 @@ pub(crate) fn Home() -> Element {
     );
     let peer_sort =
         use_signal(|| normalize_peer_sort(&local_ui_option(OPTION_UI_PEER_SORTING)).to_owned());
+    #[cfg(target_os = "android")]
+    let mobile_chat_id = use_signal(|| -1_i32);
     let peer_refresh = use_signal(|| 0_u64);
     let peer_cards = use_signal(Vec::new);
     let session = use_signal(|| None::<Session<DioxusHandler>>);
@@ -62,6 +64,8 @@ pub(crate) fn Home() -> Element {
         peer_search_text,
         peer_view_mode,
         peer_sort,
+        #[cfg(target_os = "android")]
+        mobile_chat_id,
         peer_refresh,
         peer_cards,
         session,
@@ -190,8 +194,13 @@ pub(crate) fn Home() -> Element {
         }
     });
 
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return rsx! { super::MobileHome {} };
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let rustdesk_icon = rustdesk_icon_data_uri();
 
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     return rsx! {
         div { class: if remote_window { "flex h-screen w-full flex-col overflow-hidden bg-[#090a0b]" } else { "flex h-screen min-h-[480px] w-full flex-col overflow-hidden bg-background max-[841px]:h-[100dvh] max-[841px]:min-h-[100dvh]" },
             if remote_window && cfg!(not(any(target_os = "android", target_os = "ios"))) {

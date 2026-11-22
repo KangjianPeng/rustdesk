@@ -60,7 +60,7 @@ pub(super) fn ClientCard(
 }
 
 #[component]
-fn VoiceCallActions(client: ReadSignal<Client>) -> Element {
+pub(super) fn VoiceCallActions(client: ReadSignal<Client>) -> Element {
     let client = client.read();
     let id = client.id;
     rsx! {

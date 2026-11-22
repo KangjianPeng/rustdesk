@@ -104,6 +104,28 @@ pub(crate) fn send_touch_event(
     );
 }
 
+pub(crate) fn send_touch_mouse_event(
+    data: &TouchData,
+    button: i32,
+    event_type: i32,
+    session: &Session<DioxusHandler>,
+    state: &DioxusUiState,
+) {
+    let Some((x, y)) = touch_point(data, state) else {
+        return;
+    };
+    let modifiers = data.modifiers();
+    session.send_mouse(
+        button << 3 | event_type,
+        x,
+        y,
+        modifiers.alt(),
+        modifiers.ctrl(),
+        modifiers.shift(),
+        modifiers.meta(),
+    );
+}
+
 pub(crate) fn send_wheel_event(data: &WheelData, session: &Session<DioxusHandler>) {
     let delta = data.delta().strip_units();
     let modifiers = data.modifiers();

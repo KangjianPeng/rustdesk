@@ -3,7 +3,7 @@ use super::backend::{ManagerState, STATE};
 use super::client_card::ClientCard;
 
 #[component]
-pub(crate) fn Panel(#[props(default)] standalone: bool) -> Element {
+pub(crate) fn Panel() -> Element {
     let mut state = use_signal(ManagerState::default);
     let mut deploy_token = use_signal(String::new);
     let mut deploying = use_signal(|| false);
@@ -18,22 +18,12 @@ pub(crate) fn Panel(#[props(default)] standalone: bool) -> Element {
         }
     });
     let snapshot = state.read().clone();
-    if !standalone && snapshot.clients.is_empty() && !snapshot.needs_deploy {
+    if snapshot.clients.is_empty() && !snapshot.needs_deploy {
         return rsx! {};
     }
-    let layout = if standalone {
-        "min-h-0 flex-1 p-3"
-    } else {
-        "max-h-[calc(100vh-64px)] p-5"
-    };
-    let heading = if standalone {
-        "text-base font-semibold"
-    } else {
-        "text-xl"
-    };
     rsx! {
-        details { class: "{layout} overflow-y-auto bg-background text-foreground [&_h2]:mb-4 [&_h2]:text-xl [&_h3]:m-0 [&_h3]:text-base", open: true,
-            summary { class: "mb-4 cursor-pointer {heading}", "Incoming connections" }
+        details { class: "max-h-[calc(100vh-64px)] overflow-y-auto bg-background p-5 text-foreground [&_h2]:mb-4 [&_h2]:text-xl [&_h3]:m-0 [&_h3]:text-base", open: true,
+            summary { class: "mb-4 cursor-pointer text-xl", "Incoming connections" }
             if snapshot.needs_deploy {
                 p { "This device requires deployment before it can accept connections." }
                 form { class: "mt-3 flex gap-2 [&>.inline-flex:first-child]:min-w-0 [&>.inline-flex:first-child]:flex-1 [&_input]:rounded-[5px] [&_input]:border [&_input]:p-2 [&>.inline-flex:last-child]:min-h-9 [&>.inline-flex:last-child]:rounded-[5px] [&>.inline-flex:last-child]:border [&>.inline-flex:last-child>button]:min-h-9 [&>.inline-flex:last-child>button]:px-[14px] [&>.inline-flex:last-child>button]:py-2", onsubmit: move |event| {
@@ -57,7 +47,6 @@ pub(crate) fn Panel(#[props(default)] standalone: bool) -> Element {
                 }
                 if !deploy_error().is_empty() { p { role: "alert", "{deploy_error}" } }
             }
-            if standalone && snapshot.clients.is_empty() && !snapshot.needs_deploy { p { "Waiting for a connection…" } }
             if !snapshot.notice.is_empty() { p { role: "status", "{snapshot.notice}" } }
             for client in snapshot.clients.values() {
                 ClientCard {

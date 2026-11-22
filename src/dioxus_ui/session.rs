@@ -1,15 +1,18 @@
 use super::prelude::*;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod browser_input;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod cursor;
 mod frame;
 mod input;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-mod browser_input;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod remote_state;
+pub(in crate::dioxus_ui) use super::common::ChatMessage;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(in crate::dioxus_ui) use remote_state::{ChatMessage, RemoteUiState};
+pub(in crate::dioxus_ui) use remote_state::RemoteUiState;
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(in crate::dioxus_ui) use browser_input::{send_browser_input, BrowserInput};
 #[cfg(test)]
 pub(crate) use frame::encode_frame;
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -18,8 +21,8 @@ pub(in crate::dioxus_ui) use frame::FramePacket;
 use frame::FramePipeline;
 #[cfg(test)]
 pub(crate) use input::remote_point;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(in crate::dioxus_ui) use browser_input::{BrowserInput, send_browser_input};
+#[cfg(any(target_os = "android", target_os = "ios"))]
+pub(crate) use input::send_touch_mouse_event;
 pub(crate) use input::{send_keyboard_event, send_mouse_event, send_touch_event, send_wheel_event};
 
 #[derive(Clone, Default)]
@@ -280,14 +283,17 @@ impl InvokeUiSession for DioxusHandler {
     fn clear_all_jobs(&self) {}
 
     fn new_message(&self, msg: String) {
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        self.update(|state| state.message = msg);
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         self.update(|state| {
-            Arc::make_mut(&mut Arc::make_mut(&mut state.remote).chat).push(ChatMessage {
+            let message = ChatMessage {
                 outgoing: false,
                 text: msg,
-            });
+            };
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            {
+                Arc::make_mut(&mut state.chat).push(message);
+            }
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            Arc::make_mut(&mut Arc::make_mut(&mut state.remote).chat).push(message);
         });
     }
 
@@ -516,6 +522,10 @@ pub(super) fn start_session(
         state.status = "Connecting".to_owned();
         state.message.clear();
         state.connected = false;
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        {
+            state.chat = Arc::new(Vec::new());
+        }
     });
     new_session.reconnect(false);
 }

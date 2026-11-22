@@ -1,3 +1,4 @@
+use super::super::common::ChatMessage;
 use super::super::prelude::*;
 use std::collections::HashMap;
 
@@ -15,12 +16,6 @@ pub(in crate::dioxus_ui) struct RemoteUiState {
     pub bitrate: Option<i32>,
     pub codec: String,
     pub chroma: String,
-}
-
-#[derive(Clone, PartialEq)]
-pub(in crate::dioxus_ui) struct ChatMessage {
-    pub outgoing: bool,
-    pub text: String,
 }
 
 #[cfg(test)]

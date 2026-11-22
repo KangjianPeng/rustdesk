@@ -14,6 +14,12 @@ pub(super) fn update_ui_state(
     update_signal(state, update);
 }
 
+#[derive(Clone, PartialEq)]
+pub(super) struct ChatMessage {
+    pub(super) outgoing: bool,
+    pub(super) text: String,
+}
+
 #[derive(Clone, Default)]
 pub(super) struct DioxusUiState {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -31,6 +37,8 @@ pub(super) struct DioxusUiState {
     pub(super) viewport_width: f64,
     pub(super) viewport_height: f64,
     pub(super) peer_name: String,
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    pub(super) chat: Arc<Vec<ChatMessage>>,
     pub(super) displays: Vec<DisplayInfo>,
     pub(super) current_display: i32,
     pub(super) frame_data_uri: Arc<str>,
