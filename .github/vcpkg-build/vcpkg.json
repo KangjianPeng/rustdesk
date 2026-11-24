@@ -4,6 +4,10 @@
   "dependencies": [
     "aom",
     {
+      "name": "cpu-features",
+      "platform": "android"
+    },
+    {
       "name": "ffmpeg",
       "features": [
         {
@@ -22,7 +26,8 @@
       "platform": "windows | osx"
     },
     "libvpx",
-    "libyuv"
+    "libyuv",
+    "opus"
   ],
   "vcpkg-configuration": {
     "default-registry": {
@@ -35,5 +40,9 @@
     "overlay-triplets": [
       "../../res/vcpkg-triplets"
     ]
-  }
+  },
+  "overrides": [
+    { "name": "amd-amf", "version": "1.4.35" },
+    { "name": "ffnvcodec", "version": "12.1.14.0" }
+  ]
 }
