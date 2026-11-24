@@ -23,7 +23,7 @@
           "platform": "windows"
         }
       ],
-      "platform": "windows | osx"
+      "platform": "windows | osx | android"
     },
     "libvpx",
     "libyuv",

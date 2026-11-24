@@ -330,7 +330,7 @@ jobs:
           bash .github/scripts/log-installer-build.sh
           dx bundle --release --platform android --package-types apk
           --bin rustdesk --target aarch64-linux-android --no-default-features
-          --features "use_dasp dioxus-ui mediacodec" --locked --out-dir dist/android
+          --features "use_dasp dioxus-ui hwcodec" --locked --out-dir dist/android
 
       - name: Sign and verify APK for sideloading
         shell: bash
