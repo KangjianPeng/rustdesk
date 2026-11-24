@@ -253,6 +253,7 @@ jobs:
             curl \
             git \
             libclang-dev \
+            libssl-dev \
             nasm \
             ninja-build \
             pkg-config \
@@ -318,8 +319,13 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
-          # Keep Dioxus's Android OpenSSL settings from affecting host build scripts.
+          # Dioxus supplies Android OpenSSL paths globally. Keep host build scripts
+          # on the runner's native OpenSSL installation instead.
+          X86_64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR: /usr/lib/x86_64-linux-gnu
+          X86_64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR: /usr/include
           X86_64_UNKNOWN_LINUX_GNU_OPENSSL_NO_VENDOR: "0"
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER: >-
+            ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android28-clang
         run: >-
           bash .github/scripts/log-installer-build.sh
           dx bundle --release --platform android --package-types apk

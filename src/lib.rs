@@ -53,6 +53,9 @@ mod whiteboard;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod updater;
 
+#[cfg(target_os = "macos")]
+mod manual_update;
+
 mod ui_cm_interface;
 pub(crate) mod ui_interface;
 mod ui_session_interface;
