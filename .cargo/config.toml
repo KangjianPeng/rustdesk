@@ -6,7 +6,10 @@ rustflags = ["-C", "target-feature=+crt-static", "-C", "link-args=/NODEFAULTLIB:
 rustflags = ["-Ctarget-feature=+crt-static"]
 [target.'cfg(target_os="macos")']
 rustflags = [
-    "-C", "link-args=-sectcreate __CGPreLoginApp __cgpreloginapp /dev/null",
+    "-C", "link-arg=-sectcreate",
+    "-C", "link-arg=__CGPreLoginApp",
+    "-C", "link-arg=__cgpreloginapp",
+    "-C", "link-arg=/dev/null",
 ]
 #[target.'cfg(target_os="linux")']
 # glibc-static required, this may fix https://github.com/rustdesk/rustdesk/issues/9103, but I do not want this big change

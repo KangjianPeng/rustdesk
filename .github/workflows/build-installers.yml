@@ -318,6 +318,8 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
+          # Keep Dioxus's Android OpenSSL settings from affecting host build scripts.
+          X86_64_UNKNOWN_LINUX_GNU_OPENSSL_NO_VENDOR: "0"
         run: >-
           bash .github/scripts/log-installer-build.sh
           dx bundle --release --platform android --package-types apk
