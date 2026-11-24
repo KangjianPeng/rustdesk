@@ -7,6 +7,14 @@
       "name": "ffmpeg",
       "features": [
         {
+          "name": "amf",
+          "platform": "windows"
+        },
+        {
+          "name": "nvcodec",
+          "platform": "windows"
+        },
+        {
           "name": "qsv",
           "platform": "windows"
         }
