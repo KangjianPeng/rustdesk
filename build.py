@@ -76,6 +76,11 @@ def make_parser():
         help='Build with unix file copy paste feature'
     )
     parser.add_argument(
+        '--no-default-features',
+        action='store_true',
+        help='Disable Cargo default features and build only the selected features'
+    )
+    parser.add_argument(
         '--print-features',
         action='store_true',
         help='Print the cargo feature list these flags select, and exit without building. For a '
@@ -129,6 +134,11 @@ def get_features(args):
             features.append('screencapturekit')
     print("features:", features)
     return features
+
+
+def cargo_feature_args(features, no_default_features):
+    prefix = '--no-default-features ' if no_default_features else ''
+    return f'{prefix}--features {features}'
 
 
 def get_deb_shared_depends():
@@ -584,9 +594,10 @@ def build_deb_from_folder(version, binary_folder):
     os.rename('rustdesk.deb', 'rustdesk-%s.deb' % version)
 
 
-def build_dioxus_deb(version, features):
+def build_dioxus_deb(version, features, no_default_features):
     if not skip_cargo:
-        system2(f'cargo build --locked --release --features {features} --bin rustdesk')
+        feature_args = cargo_feature_args(features, no_default_features)
+        system2(f'cargo build --locked --release {feature_args} --bin rustdesk')
     package_root = os.path.join(REPO_ROOT, 'target', 'release', 'package-root')
     if os.path.isdir(package_root):
         shutil.rmtree(package_root)
@@ -595,18 +606,20 @@ def build_dioxus_deb(version, features):
     build_deb_from_folder(version, package_root)
 
 
-def build_dioxus_dmg(version, features):
+def build_dioxus_dmg(version, features, no_default_features):
     dx_features = ' '.join(features.split(','))
+    defaults = '--no-default-features ' if no_default_features else ''
     system2(
         f'dx bundle --release --platform macos --package-types dmg '
-        f'--features "{dx_features}" --out-dir .')
+        f'{defaults}--features "{dx_features}" --out-dir .')
 
 
-def build_dioxus_macos_app(features):
+def build_dioxus_macos_app(features, no_default_features):
     dx_features = ' '.join(features.split(','))
+    defaults = '--no-default-features ' if no_default_features else ''
     system2(
         f'dx bundle --release --platform macos --package-types macos '
-        f'--features "{dx_features}"')
+        f'{defaults}--features "{dx_features}"')
 
 
 def main():
@@ -631,6 +644,7 @@ def main():
     features = ','.join(get_features(args))
     if args.skip_cargo:
         skip_cargo = True
+    feature_args = cargo_feature_args(features, args.no_default_features)
     package = args.package
     if package:
         build_deb_from_folder(version, package)
@@ -642,7 +656,7 @@ def main():
         system2('cargo build --locked --release')
         os.chdir('../../..')
 
-        system2('cargo build --locked --release --features ' + features)
+        system2(f'cargo build --locked --release {feature_args}')
         pa = os.environ.get('P')
         if pa:
             # https://certera.com/kb/tutorial-guide-for-safenet-authentication-client-for-code-signing/
@@ -667,7 +681,7 @@ def main():
     elif os.path.isfile('/usr/bin/pacman'):
         # pacman -S -needed base-devel
         system2("sed -i 's/pkgver=.*/pkgver=%s/g' res/PKGBUILD" % version)
-        system2('cargo build --locked --release --features ' + features)
+        system2(f'cargo build --locked --release {feature_args}')
         build_libdrmtap_so()
         system2('strip target/release/rustdesk')
         system2('ln -sfn res/pacman_install pacman_install')
@@ -677,7 +691,7 @@ def main():
             version, version))
         # pacman -U ./rustdesk.pkg.tar.zst
     elif os.path.isfile('/usr/bin/yum'):
-        system2('cargo build --locked --release --features ' + features)
+        system2(f'cargo build --locked --release {feature_args}')
         build_libdrmtap_so()
         system2('strip target/release/rustdesk')
         system2(
@@ -688,7 +702,7 @@ def main():
                 version, version))
         # yum localinstall rustdesk.rpm
     elif os.path.isfile('/usr/bin/zypper'):
-        system2('cargo build --locked --release --features ' + features)
+        system2(f'cargo build --locked --release {feature_args}')
         build_libdrmtap_so()
         system2('strip target/release/rustdesk')
         system2(
@@ -701,11 +715,11 @@ def main():
     else:
         if osx:
             if args.macos_app:
-                build_dioxus_macos_app(features)
+                build_dioxus_macos_app(features, args.no_default_features)
             else:
-                build_dioxus_dmg(version, features)
+                build_dioxus_dmg(version, features, args.no_default_features)
         else:
-            build_dioxus_deb(version, features)
+            build_dioxus_deb(version, features, args.no_default_features)
         return
 def md5_file(fn):
     md5 = hashlib.md5(open('tmpdeb/' + fn, 'rb').read()).hexdigest()
