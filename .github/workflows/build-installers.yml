@@ -249,6 +249,7 @@ jobs:
             curl \
             git \
             libclang-dev \
+            nasm \
             ninja-build \
             pkg-config \
             unzip \
