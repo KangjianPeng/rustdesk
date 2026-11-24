@@ -178,7 +178,7 @@ jobs:
 
       - name: Install native build dependencies
         run: |
-          brew install create-dmg llvm pkg-config
+          brew install create-dmg llvm nasm pkg-config
           echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> "$GITHUB_ENV"
 
       - name: Export GitHub Actions cache environment
