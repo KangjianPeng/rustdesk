@@ -214,6 +214,9 @@ jobs:
         run: cargo install dioxus-cli --version 0.7.10 --locked
 
       - name: Build macOS disk image
+        env:
+          # Avoid the LLVM bitcode error seen while linking tray-icon via Dioxus.
+          CARGO_PROFILE_RELEASE_LTO: "off"
         run: bash .github/scripts/log-installer-build.sh python3 build.py --no-default-features --hwcodec
 
       - name: Upload macOS disk image
