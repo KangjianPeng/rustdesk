@@ -497,7 +497,6 @@ fn start_grab_loop() {
     #[cfg(target_os = "linux")]
     if let Err(err) = rdev::start_grab_listen(move |event: Event| match event.event_type {
         EventType::KeyPress(key) | EventType::KeyRelease(key) => {
-            let is_press = matches!(event.event_type, EventType::KeyPress(_));
             if let Key::Unknown(keycode) = key {
                 log::error!("rdev get unknown key, keycode is {:?}", keycode);
             } else {

@@ -1584,15 +1584,6 @@ pub fn is_root() -> bool {
     crate::username() == "root"
 }
 
-fn is_opensuse() -> bool {
-    if let Ok(res) = run_cmds("cat /etc/os-release | grep opensuse") {
-        if !res.is_empty() {
-            return true;
-        }
-    }
-    false
-}
-
 pub fn run_as_user<I, K, V>(
     arg: Vec<&str>,
     user: Option<(String, String)>,
@@ -2010,53 +2001,10 @@ pub fn quit_gui() {
     unsafe { gtk_main_quit() };
 }
 
-/*
-pub fn exec_privileged(args: &[&str]) -> ResultType<Child> {
-    Ok(Command::new("pkexec").args(args).spawn()?)
-}
-*/
-
 pub fn check_super_user_permission() -> ResultType<bool> {
     gtk_sudo::run(vec!["echo"])?;
     Ok(true)
 }
-
-/*
-pub fn elevate(args: Vec<&str>) -> ResultType<bool> {
-    let cmd = std::env::current_exe()?;
-    match cmd.to_str() {
-        Some(cmd) => {
-            let mut args_with_exe = vec![cmd];
-            args_with_exe.append(&mut args.clone());
-            // -E required for opensuse
-            if is_opensuse() {
-                args_with_exe.insert(0, "-E");
-            }
-            let res = match exec_privileged(&args_with_exe)?.wait() {
-                Ok(status) => {
-                    if status.success() {
-                        true
-                    } else {
-                        log::error!(
-                            "Failed to wait install process, process status: {:?}",
-                            status
-                        );
-                        false
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to wait install process, error: {}", e);
-                    false
-                }
-            };
-            Ok(res)
-        }
-        None => {
-            hbb_common::bail!("Failed to get current exe as str");
-        }
-    }
-}
-*/
 
 type GtkSettingsPtr = *mut c_void;
 type GObjectPtr = *mut c_void;

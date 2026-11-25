@@ -104,6 +104,7 @@ pub(crate) fn send_touch_event(
     );
 }
 
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub(crate) fn send_touch_mouse_event(
     data: &TouchData,
     button: i32,

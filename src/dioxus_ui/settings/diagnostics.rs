@@ -47,7 +47,7 @@ pub(crate) fn CodecDiagnostics(state: SyncSignal<CodecUiState>) -> Element {
     let busy = snapshot.loading || snapshot.benchmarking;
     rsx! {
         Card { css_class: "mt-4 w-full min-w-0 max-w-[960px] px-4",
-            div { class: "flex items-center justify-between gap-3",
+            div { class: "codec-diagnostics-heading flex items-center justify-between gap-3",
                 h2 { class: "min-w-0 font-semibold", {tr("Codec diagnostics")} }
                 div { class: "flex shrink-0 items-center gap-2",
                     Button { variant: ButtonVariant::Outline, size: ButtonSize::IconSm,
@@ -83,7 +83,7 @@ pub(crate) fn CodecDiagnostics(state: SyncSignal<CodecUiState>) -> Element {
             for (operation, title) in [("encode", "Encoders"), ("decode", "Decoders")] {
                 section { class: "min-w-0 space-y-3", aria_label: tr(title),
                     h3 { class: "text-sm font-medium", {tr(title)} }
-                    TableWrapper { class: "max-h-none",
+                    TableWrapper { class: "mobile-codec-table max-h-none",
                         Table {
                             class: "min-w-[600px]",
                             TableHeader { TableRow {
@@ -158,12 +158,17 @@ fn CodecBackend(entry: Value, testing: bool, loading: bool) -> Element {
     };
     rsx! {
         TableRow {
-            TableCell { class: "p-3 font-medium", "{entry[\"codec\"].as_str().unwrap_or_default()}" }
+            TableCell { class: "p-3 font-medium",
+                span { class: "mobile-codec-label", {tr("Codec format")} }
+                span { "{entry[\"codec\"].as_str().unwrap_or_default()}" }
+            }
             TableCell { class: "p-3",
+                span { class: "mobile-codec-label", {tr("Support")} }
                 Badge { variant: badge_variant, class: "whitespace-nowrap {badge_class}", {tr(support)} }
             }
             TableCell { class: "p-3",
-                div { class: "flex flex-col gap-1",
+                span { class: "mobile-codec-label", {tr("Backend")} }
+                div { class: "flex min-w-0 flex-col gap-1",
                     span { "{backend}" }
                     if available && name != backend {
                         span { class: "text-xs text-muted-foreground", "{name}" }
@@ -171,7 +176,8 @@ fn CodecBackend(entry: Value, testing: bool, loading: bool) -> Element {
                 }
             }
             TableCell { class: "w-[220px] p-3 tabular-nums",
-                div { class: "flex flex-col gap-1",
+                span { class: "mobile-codec-label", {tr("Performance")} }
+                div { class: "flex min-w-0 flex-col gap-1",
                     span { class: "whitespace-nowrap", "{performance}" }
                     if !testing {
                         if let Some(error) = error {

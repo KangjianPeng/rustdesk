@@ -118,12 +118,6 @@ pub const REQUIRE_2FA: &'static str = "2FA Required";
 pub const LOGIN_MSG_NO_PASSWORD_ACCESS: &str = "No Password Access";
 pub const LOGIN_MSG_OFFLINE: &str = "Offline";
 pub const LOGIN_SCREEN_WAYLAND: &str = "Wayland login screen is not supported";
-#[cfg(target_os = "linux")]
-pub const SCRAP_UBUNTU_HIGHER_REQUIRED: &str = "ubuntu-21-04-required";
-#[cfg(target_os = "linux")]
-pub const SCRAP_OTHER_VERSION_OR_X11_REQUIRED: &str = "wayland-requires-higher-linux-version";
-#[cfg(target_os = "linux")]
-pub const SCRAP_XDP_PORTAL_UNAVAILABLE: &str = "xdp-portal-unavailable";
 pub const SCRAP_X11_REQUIRED: &str = "x11 expected";
 pub const SCRAP_X11_REF_URL: &str = "https://rustdesk.com/docs/en/manual/linux/#x11-required";
 
@@ -2820,7 +2814,6 @@ pub struct LoginConfigHandler {
     pub direct: Option<bool>,
     pub received: bool,
     switch_uuid: Option<String>,
-    pub save_ab_password_to_recent: bool, // true: connected with ab password
     pub other_server: Option<(String, String, String)>,
     pub custom_fps: Arc<Mutex<Option<usize>>>,
     pub adapter_luid: Option<i64>,

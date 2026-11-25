@@ -15,6 +15,7 @@ pub(in crate::dioxus_ui) struct ManagerState {
     pub(in crate::dioxus_ui) messages: VecDeque<(i32, String)>,
     pub(super) notice: String,
     pub(super) show_elevation: bool,
+    #[cfg(target_os = "android")]
     pub(super) needs_deploy: bool,
 }
 

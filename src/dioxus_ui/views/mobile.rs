@@ -39,8 +39,9 @@ pub fn MobileHome() -> Element {
     let mut selected_tab = use_signal(|| initial_tab);
     let connected = state.ui_state.read().connected;
     rsx! {
+        document::Stylesheet { href: asset!("/assets/mobile.css") }
         div {
-            class: "flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-background text-foreground [padding-top:env(safe-area-inset-top)] [padding-bottom:env(safe-area-inset-bottom)]",
+            class: "mobile-shell flex min-h-0 w-full flex-col overflow-hidden bg-background text-foreground",
             tabindex: "0",
             onkeydown: move |event: KeyboardEvent| {
                 if event.key() != Key::Escape {
@@ -60,10 +61,10 @@ pub fn MobileHome() -> Element {
                 if selected_tab() == "chat" {
                     MobileChatPage {}
                 } else {
-                    header { class: "flex h-14 shrink-0 items-center justify-center border-b border-border bg-card px-4",
-                        h1 { class: "max-w-full truncate text-base font-medium", {tr("RustDesk")} }
+                    header { class: "mobile-header flex shrink-0 items-center justify-center border-b border-border bg-card px-4",
+                        h1 { class: "max-w-full truncate text-base font-semibold", {tr("RustDesk")} }
                     }
-                    main { class: "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+                    main { class: if selected_tab() == "settings" { "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" } else { "min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" },
                         match selected_tab().as_str() {
                             "connection" => rsx! { MobileConnectionPage {} },
                             "share" => rsx! { MobileSharePage {} },
@@ -71,12 +72,13 @@ pub fn MobileHome() -> Element {
                         }
                     }
                 }
-                nav { class: "grid shrink-0 border-t border-border bg-card", style: "grid-template-columns: repeat({tab_count}, minmax(0, 1fr))", aria_label: tr("Main navigation"),
+                nav { class: "mobile-nav grid shrink-0 border-t border-border bg-card", style: "grid-template-columns: repeat({tab_count}, minmax(0, 1fr))", aria_label: tr("Main navigation"),
                     for tab in tabs.iter().copied() {
                         Button {
                             key: "mobile-tab-{tab.id}",
-                            css_class: if selected_tab() == tab.id { "h-14 flex-col gap-1 rounded-none bg-accent px-1 text-primary" } else { "h-14 flex-col gap-1 rounded-none bg-transparent px-1 text-muted-foreground" },
+                            css_class: if selected_tab() == tab.id { "mobile-nav-button bg-accent text-primary" } else { "mobile-nav-button text-muted-foreground" },
                             variant: ButtonVariant::Ghost,
+                            aria_label: tab.label,
                             onclick: move |_| {
                                 selected_tab.set(tab.id.to_owned());
                                 if tab.id == "settings" && !state.active_page.peek().starts_with("settings:") {
@@ -84,7 +86,7 @@ pub fn MobileHome() -> Element {
                                 }
                             },
                             UiIcon { icon: tab.icon }
-                            span { class: "text-xs leading-none", {tr(tab.label)} }
+                            span { {tr(tab.label)} }
                         }
                     }
                 }
@@ -140,16 +142,17 @@ fn MobileConnectionPage() -> Element {
     let mut peer_tab = state.peer_tab;
 
     rsx! {
-        div { class: "flex min-h-full flex-col gap-4 p-4",
-            div { class: "flex h-20 items-center gap-2 rounded-[13px] border border-border bg-card px-2 shadow-sm",
+        div { class: "mobile-page flex flex-col gap-4",
+            div { class: "flex items-center gap-2",
                 Input {
-                    css_class: "h-12 min-w-0 flex-1 border-0 bg-transparent text-center text-base shadow-none focus-visible:ring-0",
+                    css_class: "h-12 min-w-0 flex-1 text-center text-base tabular-nums",
+                    name: "remote-id",
                     value: format_remote_id(&peer_id()),
                     placeholder: "Enter remote ID",
                     oninput: move |event: FormEvent| peer_id.set(format_remote_id(&event.value())),
                 }
                 Button {
-                    css_class: "h-11 w-11 shrink-0 p-0",
+                    css_class: "h-12 w-12 shrink-0 p-0",
                     title: "Connect",
                     aria_label: "Connect",
                     disabled: peer_id().trim().is_empty() || state.session.read().is_some(),
@@ -158,11 +161,11 @@ fn MobileConnectionPage() -> Element {
                 }
             }
             if !status.status.is_empty() || !status.message.is_empty() {
-                Card { css_class: "w-full px-4 py-3",
+                Card { css_class: "mobile-status w-full gap-2 px-4 py-3",
                     if !status.status.is_empty() { p { class: "text-sm font-medium", {tr(&status.status)} } }
                     if !status.message.is_empty() { p { class: "mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]", {tr(&status.message)} } }
                     if status.password_required {
-                        div { class: "mt-3 flex gap-2",
+                        div { class: "mobile-form flex gap-2",
                             Input { css_class: "min-w-0 flex-1", r#type: InputType::Password, value: password(), placeholder: "Password", oninput: move |event: FormEvent| password.set(event.value()) }
                             Button { onclick: move |_| if let Some(active) = state.session.read().as_ref() {
                                 active.login(String::new(), String::new(), password(), (state.remember_password)());
@@ -170,7 +173,7 @@ fn MobileConnectionPage() -> Element {
                             }, {tr("Continue")} }
                         }
                     } else if status.two_factor_required {
-                        div { class: "mt-3 flex gap-2",
+                        div { class: "mobile-form flex gap-2",
                             Input { css_class: "min-w-0 flex-1", value: two_factor_code(), placeholder: "Two-factor code", oninput: move |event: FormEvent| two_factor_code.set(event.value()) }
                             Button { onclick: move |_| if let Some(active) = state.session.read().as_ref() {
                                 active.send2fa(two_factor_code(), false);
@@ -187,11 +190,11 @@ fn MobileConnectionPage() -> Element {
                     }
                 }
             }
-            div { class: "flex min-h-0 flex-1 flex-col",
-                div { class: "flex shrink-0 border-b border-border",
+            div { class: "flex min-w-0 flex-col gap-3",
+                div { class: "mobile-peer-tabs grid grid-cols-2 gap-1 rounded-lg bg-muted p-1",
                     for (id, label) in [("recent", "Recent sessions"), ("favorites", "Favorites")] {
                         Button {
-                            css_class: if peer_tab() == id { "h-11 flex-1 rounded-none border-b-2 border-primary bg-transparent" } else { "h-11 flex-1 rounded-none bg-transparent text-muted-foreground" },
+                            css_class: if peer_tab() == id { "bg-card text-foreground shadow-sm" } else { "text-muted-foreground" },
                             variant: ButtonVariant::Ghost,
                             onclick: move |_| peer_tab.set(id.to_owned()),
                             {tr(label)}
@@ -199,9 +202,12 @@ fn MobileConnectionPage() -> Element {
                     }
                 }
                 if peers.is_empty() {
-                    p { class: "py-12 text-center text-sm text-muted-foreground", {tr(if peer_tab() == "favorites" { "No favorites" } else { "No recent sessions" })} }
+                    div { class: "flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground",
+                        if peer_tab() == "favorites" { Star { class: "size-6" } } else { History { class: "size-6" } }
+                        p { {tr(if peer_tab() == "favorites" { "No favorites" } else { "No recent sessions" })} }
+                    }
                 } else {
-                    div { class: "divide-y divide-border rounded-lg border border-border bg-card",
+                    div { class: "divide-y divide-border overflow-hidden rounded-lg border border-border bg-card",
                         for peer in peers {
                             {
                                 let id = peer.id.clone();
@@ -268,13 +274,13 @@ fn MobileChatPage() -> Element {
         .collect();
 
     rsx! {
-        header { class: "flex h-14 shrink-0 items-center justify-center gap-2 border-b border-border bg-card px-4",
+        header { class: "mobile-header flex shrink-0 items-center justify-center gap-2 border-b border-border bg-card px-4",
             h1 { class: "min-w-0 truncate text-base font-medium", "{title}" }
             if active.is_some() {
                 span { class: "h-2.5 w-2.5 shrink-0 rounded-full bg-success", title: tr("Connected") }
             }
         }
-        main { class: "flex min-h-0 flex-1 flex-col overflow-hidden overscroll-contain p-4",
+        main { class: "mobile-page flex min-h-0 flex-1 flex-col overflow-hidden overscroll-contain",
             if let Some(active) = active {
                 div { class: "mb-3 flex shrink-0 gap-2 overflow-x-auto pb-1",
                     for client in clients {
@@ -328,7 +334,7 @@ fn mobile_chat_label(client: &crate::ui_cm_interface::Client) -> &str {
 fn MobileChatComposer(id: i32, enabled: bool) -> Element {
     let mut draft = use_signal(String::new);
     rsx! {
-        form { class: "mt-3 flex shrink-0 gap-2", onsubmit: move |event| {
+        form { class: "mobile-form mt-3 flex shrink-0 gap-2", onsubmit: move |event| {
             event.prevent_default();
             let text = draft().trim().to_owned();
             if enabled && !text.is_empty() && super::super::connection_manager::send_mobile_chat(id, text) {
@@ -352,26 +358,30 @@ fn MobileChatPage() -> Element {
 fn MobileSharePage() -> Element {
     let mut state = use_context::<super::super::state::AppState>();
     rsx! {
-        div { class: "flex min-h-full flex-col gap-4 p-4",
-            Card { css_class: "px-4 py-4",
-                h2 { class: "mb-4 text-base font-semibold", {tr("Your Device")} }
-                p { class: "text-xs text-muted-foreground", {tr("ID")} }
-                div { class: "flex items-center justify-between gap-2 py-2",
-                    span { class: "min-w-0 flex-1 select-all truncate text-lg font-medium", "{(state.local_device_id)()}" }
-                    Button { variant: ButtonVariant::Ghost, title: tr("Copy ID"), onclick: move |_| copy_text_to_clipboard((state.local_device_id)()), Copy { class: "size-4" } }
+        div { class: "mobile-page flex flex-col gap-4",
+            Card { css_class: "gap-3 p-4",
+                h2 { class: "text-base font-semibold", {tr("Your Device")} }
+                div { class: "flex items-center gap-2",
+                    div { class: "min-w-0 flex-1",
+                        p { class: "text-xs text-muted-foreground", {tr("ID")} }
+                        p { class: "select-all text-lg font-medium tabular-nums [overflow-wrap:anywhere]", "{(state.local_device_id)()}" }
+                    }
+                    Button { css_class: "mobile-icon-button", variant: ButtonVariant::Ghost, title: "Copy ID", aria_label: "Copy ID", onclick: move |_| copy_text_to_clipboard((state.local_device_id)()), Copy { class: "size-4" } }
                 }
-                p { class: "mt-2 text-xs text-muted-foreground", {tr("One-time Password")} }
-                div { class: "flex items-center justify-between gap-2 py-2",
-                    span { class: "min-w-0 flex-1 select-all truncate font-medium", "{(state.temporary_password)()}" }
-                    Button { variant: ButtonVariant::Ghost, title: tr("Refresh"), onclick: move |_| {
+                div { class: "flex items-center gap-2 border-t border-border pt-3",
+                    div { class: "min-w-0 flex-1",
+                        p { class: "text-xs text-muted-foreground", {tr("One-time Password")} }
+                        p { class: "select-all text-lg font-medium tabular-nums [overflow-wrap:anywhere]", "{(state.temporary_password)()}" }
+                    }
+                    Button { css_class: "mobile-icon-button", variant: ButtonVariant::Ghost, title: "Refresh", aria_label: "Refresh", onclick: move |_| {
                         crate::ui_interface::update_temporary_password();
                         state.temporary_password.set(crate::ui_interface::temporary_password());
                     }, RefreshCw { class: "size-4" } }
-                    Button { variant: ButtonVariant::Ghost, title: tr("Copy password"), onclick: move |_| copy_text_to_clipboard((state.temporary_password)()), Copy { class: "size-4" } }
+                    Button { css_class: "mobile-icon-button", variant: ButtonVariant::Ghost, title: "Copy password", aria_label: "Copy password", onclick: move |_| copy_text_to_clipboard((state.temporary_password)()), Copy { class: "size-4" } }
                 }
             }
             Card { css_class: "px-4 py-3", ServiceStatus { status: (state.service_status)() } }
-            div { class: "[&_.cm-panel]:rounded-xl [&_.cm-panel]:border [&_.cm-panel]:border-border [&_.cm-panel]:shadow-sm", super::super::connection_manager::Panel {} }
+            div { class: "mobile-incoming", super::super::connection_manager::Panel {} }
         }
     }
 }
@@ -404,25 +414,29 @@ fn MobileSettingsPage() -> Element {
         tabs.push(("settings:account", "Account"));
     }
     rsx! {
-        div { class: "flex min-h-full flex-col",
-            nav { class: "flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-card px-2 py-2", aria_label: tr("Settings sections"),
+        div { class: "flex min-h-0 flex-1 flex-col",
+            nav { class: "mobile-settings-tabs border-b border-border bg-card", aria_label: tr("Settings sections"),
+                div { class: "mobile-page flex gap-1",
                     for (page, label) in tabs.iter().copied() {
-                    Button {
-                        key: "mobile-setting-tab-{page}",
-                        css_class: if active_page() == page { "shrink-0 whitespace-nowrap bg-accent text-primary" } else { "shrink-0 whitespace-nowrap" },
-                        variant: ButtonVariant::Ghost,
-                        onclick: move |_| active_page.set(page.to_owned()),
-                        {tr(label)}
+                        Button {
+                            key: "mobile-setting-tab-{page}",
+                            css_class: if active_page() == page { "shrink-0 bg-accent text-primary" } else { "shrink-0 text-muted-foreground" },
+                            variant: ButtonVariant::Ghost,
+                            onclick: move |_| active_page.set(page.to_owned()),
+                            {tr(label)}
+                        }
                     }
                 }
             }
-            section { class: "min-h-0 flex-1 overflow-y-auto px-3 py-4",
-                SettingsContent {
-                    key: "{active_page()}",
-                    page: active_page(),
-                    codec_state: state.codec_state,
-                    has_hardware_codec: state.has_hardware_codec,
-                    hardware_codec: state.hardware_codec,
+            section { class: "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+                div { class: "mobile-page mobile-settings-content",
+                    SettingsContent {
+                        key: "{active_page()}",
+                        page: active_page(),
+                        codec_state: state.codec_state,
+                        has_hardware_codec: state.has_hardware_codec,
+                        hardware_codec: state.hardware_codec,
+                    }
                 }
             }
         }
@@ -470,9 +484,10 @@ fn MobileRemotePage() -> Element {
     rsx! {
         div { class: "relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#090a0b]",
             main { class: "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden",
+                class: if !toolbar_visible() { "mobile-toolbar-collapsed" } else { "" },
                 MobileRemoteSurface { touch_mode: touch_mode(), peer_is_android }
                 if gesture_help() {
-                    aside { class: "absolute inset-x-3 bottom-3 z-20 rounded-xl border border-border bg-card/95 p-4 text-sm text-card-foreground shadow-lg",
+                    aside { class: "mobile-overlay z-20 overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-4 text-sm text-card-foreground shadow-lg",
                         h2 { class: "mb-2 font-semibold", {tr("Touch gestures")} }
                         ul { class: "space-y-1 text-muted-foreground",
                             li { {tr("Tap to click")} }
@@ -484,7 +499,7 @@ fn MobileRemotePage() -> Element {
                     }
                 }
                 if actions_open() {
-                    div { class: "absolute inset-x-3 bottom-3 z-30 grid grid-cols-2 gap-2 rounded-xl border border-border bg-card p-3 text-card-foreground shadow-lg",
+                    div { class: "mobile-overlay mobile-actions z-30 grid grid-cols-2 gap-2 overflow-y-auto overscroll-contain rounded-xl border border-border bg-card p-3 text-card-foreground shadow-lg",
                         Button { variant: ButtonVariant::Outline, disabled: !can_control, onclick: move |_| {
                             if let Some(active) = session.read().as_ref() { active.ctrl_alt_del(); }
                             actions_open.set(false);
@@ -501,10 +516,10 @@ fn MobileRemotePage() -> Element {
                     }
                 }
                 if chat_open() {
-                    aside { class: "absolute inset-x-3 top-3 bottom-3 z-40 flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl",
-                        div { class: "flex items-center justify-between border-b border-border px-4 py-3",
+                    aside { class: "mobile-overlay mobile-chat-overlay z-40 flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl",
+                        div { class: "flex shrink-0 items-center justify-between gap-2 border-b border-border px-3",
                             h2 { class: "font-semibold", {tr("Text chat")} }
-                            Button { variant: ButtonVariant::Ghost, title: tr("Close"), aria_label: tr("Close"), onclick: move |_| chat_open.set(false), X { class: "size-4" } }
+                            Button { css_class: "mobile-icon-button", variant: ButtonVariant::Ghost, title: "Close", aria_label: "Close", onclick: move |_| chat_open.set(false), X { class: "size-4" } }
                         }
                         div { class: "min-h-0 flex-1 space-y-2 overflow-y-auto p-3", role: "log", aria_live: "polite",
                             if status.chat.is_empty() {
@@ -518,7 +533,7 @@ fn MobileRemotePage() -> Element {
                                 }
                             }
                         }
-                        form { class: "flex shrink-0 gap-2 border-t border-border p-3", onsubmit: move |event| {
+                        form { class: "mobile-form flex shrink-0 gap-2 border-t border-border p-2", onsubmit: move |event| {
                             event.prevent_default();
                             let text = chat_text().trim().to_owned();
                             if text.is_empty() { return; }
@@ -539,9 +554,18 @@ fn MobileRemotePage() -> Element {
                         }
                     }
                 }
+                if !toolbar_visible() {
+                    Button {
+                        css_class: "mobile-show-toolbar mobile-icon-button rounded-full shadow-lg",
+                        title: "Show Toolbar",
+                        aria_label: "Show Toolbar",
+                        onclick: move |_| toolbar_visible.set(true),
+                        ChevronUp { class: "size-5" }
+                    }
+                }
             }
             if keyboard_open() && can_control {
-                form { class: "flex shrink-0 gap-2 border-t border-border bg-card p-2", onsubmit: move |event| {
+                form { class: "mobile-form flex shrink-0 gap-2 border-t border-border bg-card p-2", onsubmit: move |event| {
                     event.prevent_default();
                     let text = keyboard_text();
                     if !text.is_empty() {
@@ -551,79 +575,73 @@ fn MobileRemotePage() -> Element {
                 },
                     Input { css_class: "min-w-0 flex-1", name: "mobile-keyboard-text", value: keyboard_text(), placeholder: "Type text for the remote device", oninput: move |event: FormEvent| keyboard_text.set(event.value()) }
                     Button { button_type: "submit", disabled: keyboard_text().is_empty(), {tr("Send")} }
-                    Button { variant: ButtonVariant::Ghost, onclick: move |_| keyboard_open.set(false), {tr("Close")} }
+                    Button { css_class: "mobile-icon-button", variant: ButtonVariant::Ghost, title: "Close", aria_label: "Close", onclick: move |_| keyboard_open.set(false), X { class: "size-4" } }
                 }
             }
             if toolbar_visible() {
-                nav { class: "flex shrink-0 items-center gap-1 overflow-x-auto border-t border-border bg-primary p-2 text-primary-foreground", aria_label: tr("Remote controls"),
-                    Button { css_class: "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground", variant: ButtonVariant::Ghost, title: "Disconnect", onclick: move |_| close_mobile_session(state), X { class: "size-5" } }
-                    Button { css_class: if chat_open() { "shrink-0 bg-white/20 text-primary-foreground" } else { "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground" }, variant: ButtonVariant::Ghost, title: tr("Text chat"), aria_label: tr("Text chat"), onclick: move |_| { actions_open.set(false); gesture_help.set(false); chat_open.set(!chat_open()); }, MessageSquare { class: "size-5" } }
-                    if can_control {
-                        Button { css_class: "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground", variant: ButtonVariant::Ghost, title: "Keyboard", onclick: move |_| keyboard_open.set(!keyboard_open()), Keyboard { class: "size-5" } }
+                nav { class: "mobile-toolbar flex shrink-0 items-center gap-1 border-t border-border bg-card", aria_label: tr("Remote controls"),
+                    Button { css_class: "mobile-icon-button text-destructive", variant: ButtonVariant::Ghost, title: "Disconnect", aria_label: "Disconnect", onclick: move |_| close_mobile_session(state), X { class: "size-5" } }
+                    div { class: "mobile-toolbar-scroll flex min-w-0 flex-1 items-center gap-1 overflow-x-auto",
+                        Button { css_class: if chat_open() { "mobile-icon-button bg-accent" } else { "mobile-icon-button" }, variant: ButtonVariant::Ghost, title: "Text chat", aria_label: "Text chat", onclick: move |_| { actions_open.set(false); gesture_help.set(false); chat_open.set(!chat_open()); }, MessageSquare { class: "size-5" } }
+                        if can_control {
+                            Button { css_class: if keyboard_open() { "mobile-icon-button bg-accent" } else { "mobile-icon-button" }, variant: ButtonVariant::Ghost, title: "Keyboard", aria_label: "Keyboard", onclick: move |_| keyboard_open.set(!keyboard_open()), Keyboard { class: "size-5" } }
+                        }
+                        if peer_is_android && can_control {
+                            Button {
+                                css_class: "mobile-icon-button",
+                                variant: ButtonVariant::Ghost,
+                                title: "Back",
+                                aria_label: "Back",
+                                onclick: move |_| if let Some(active) = session.read().as_ref() { send_mobile_back(active); },
+                                ArrowLeft { class: "size-5" }
+                            }
+                            Button {
+                                css_class: "mobile-icon-button",
+                                variant: ButtonVariant::Ghost,
+                                title: "Home",
+                                aria_label: "Home",
+                                onclick: move |_| if let Some(active) = session.read().as_ref() { send_mobile_home(active); },
+                                House { class: "size-5" }
+                            }
+                            Button {
+                                css_class: "mobile-icon-button",
+                                variant: ButtonVariant::Ghost,
+                                title: "Apps",
+                                aria_label: "Apps",
+                                onclick: move |_| if let Some(active) = session.read().as_ref() { send_mobile_apps(active.clone()); },
+                                Ellipsis { class: "size-5" }
+                            }
+                        }
+                        if !peer_is_android && can_control {
+                            Button {
+                                css_class: if touch_mode() { "mobile-icon-button bg-accent" } else { "mobile-icon-button" },
+                                variant: ButtonVariant::Ghost,
+                                title: if touch_mode() { "Touch mode" } else { "Mouse mode" },
+                                onclick: move |_| {
+                                    let next = !touch_mode();
+                                    touch_mode.set(next);
+                                    crate::ui_interface::set_local_option(OPTION_TOUCH_MODE.to_owned(), if next { "Y" } else { "N" }.to_owned());
+                                },
+                                if touch_mode() { Hand { class: "size-5" } } else { MousePointer2 { class: "size-5" } }
+                            }
+                        }
+                        Button { css_class: if gesture_help() { "mobile-icon-button bg-accent" } else { "mobile-icon-button" }, variant: ButtonVariant::Ghost, title: "Touch gestures", aria_label: "Touch gestures", onclick: move |_| { actions_open.set(false); gesture_help.set(!gesture_help()); }, CircleHelp { class: "size-5" } }
+                        if display_count > 0 {
+                            Button {
+                                css_class: "mobile-display-button",
+                                variant: ButtonVariant::Ghost,
+                                title: "Switch display",
+                                disabled: display_count < 2,
+                                onclick: move |_| if let Some(active) = session.read().as_ref() {
+                                    active.switch_display((current_display + 1).rem_euclid(display_count as i32));
+                                },
+                                Monitor { class: "size-5" }
+                                span { class: "text-xs", "{current_display + 1}/{display_count}" }
+                            }
+                        }
                     }
-                    if peer_is_android && can_control {
-                        Button {
-                            css_class: "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground",
-                            variant: ButtonVariant::Ghost,
-                            title: "Back",
-                            aria_label: "Back",
-                            onclick: move |_| if let Some(active) = session.read().as_ref() { send_mobile_back(active); },
-                            ArrowLeft { class: "size-5" }
-                        }
-                        Button {
-                            css_class: "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground",
-                            variant: ButtonVariant::Ghost,
-                            title: "Home",
-                            aria_label: "Home",
-                            onclick: move |_| if let Some(active) = session.read().as_ref() { send_mobile_home(active); },
-                            House { class: "size-5" }
-                        }
-                        Button {
-                            css_class: "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground",
-                            variant: ButtonVariant::Ghost,
-                            title: "Apps",
-                            aria_label: "Apps",
-                            onclick: move |_| if let Some(active) = session.read().as_ref() { send_mobile_apps(active.clone()); },
-                            Ellipsis { class: "size-5" }
-                        }
-                    }
-                    if !peer_is_android && can_control {
-                        Button {
-                            css_class: if touch_mode() { "shrink-0 bg-white/20 text-primary-foreground" } else { "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15" },
-                            variant: ButtonVariant::Ghost,
-                            title: if touch_mode() { "Touch mode" } else { "Mouse mode" },
-                            onclick: move |_| {
-                                let next = !touch_mode();
-                                touch_mode.set(next);
-                                crate::ui_interface::set_local_option(OPTION_TOUCH_MODE.to_owned(), if next { "Y" } else { "N" }.to_owned());
-                            },
-                            if touch_mode() { Hand { class: "size-5" } } else { MousePointer2 { class: "size-5" } }
-                        }
-                    }
-                    Button { css_class: if gesture_help() { "shrink-0 bg-white/20 text-primary-foreground" } else { "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground" }, variant: ButtonVariant::Ghost, title: "Touch gestures", onclick: move |_| { actions_open.set(false); gesture_help.set(!gesture_help()); }, CircleHelp { class: "size-5" } }
-                    if display_count > 0 {
-                        Button {
-                            css_class: "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground",
-                            variant: ButtonVariant::Ghost,
-                            title: "Switch display",
-                            disabled: display_count < 2,
-                            onclick: move |_| if let Some(active) = session.read().as_ref() {
-                                active.switch_display((current_display + 1).rem_euclid(display_count as i32));
-                            },
-                            Monitor { class: "size-5" }
-                            span { class: "text-xs", "{current_display + 1}/{display_count}" }
-                        }
-                    }
-                    Button { css_class: if actions_open() { "shrink-0 bg-white/20 text-primary-foreground" } else { "shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground" }, variant: ButtonVariant::Ghost, title: "More actions", onclick: move |_| { gesture_help.set(false); actions_open.set(!actions_open()); }, Ellipsis { class: "size-5" } }
-                    Button { css_class: "ml-auto shrink-0 bg-transparent text-primary-foreground hover:bg-white/15 hover:text-primary-foreground", variant: ButtonVariant::Ghost, title: "Hide Toolbar", aria_label: "Hide Toolbar", onclick: move |_| toolbar_visible.set(false), ChevronDown { class: "size-5" } }
-                }
-            } else {
-                Button {
-                    css_class: "absolute bottom-3 right-3 z-30 h-11 w-11 rounded-full p-0 shadow-lg",
-                    title: tr("Show Toolbar"),
-                    aria_label: tr("Show Toolbar"),
-                    onclick: move |_| toolbar_visible.set(true),
-                    ChevronUp { class: "size-5" }
+                    Button { css_class: if actions_open() { "mobile-icon-button bg-accent" } else { "mobile-icon-button" }, variant: ButtonVariant::Ghost, title: "More actions", aria_label: "More actions", onclick: move |_| { gesture_help.set(false); actions_open.set(!actions_open()); }, Ellipsis { class: "size-5" } }
+                    Button { css_class: "mobile-icon-button", variant: ButtonVariant::Ghost, title: "Hide Toolbar", aria_label: "Hide Toolbar", onclick: move |_| toolbar_visible.set(false), ChevronDown { class: "size-5" } }
                 }
             }
         }
