@@ -1,7 +1,11 @@
 use super::super::super::prelude::*;
 
 #[component]
-pub(super) fn PeerCard(peer: PeerCardData, selected: bool, mut peer_menu: Signal<String>) -> Element {
+pub(super) fn PeerCard(
+    peer: PeerCardData,
+    selected: bool,
+    mut peer_menu: Signal<String>,
+) -> Element {
     let state = use_context::<super::super::super::state::AppState>();
     let mut selected_peer = state.selected_peer;
     let mut peer_refresh = state.peer_refresh;

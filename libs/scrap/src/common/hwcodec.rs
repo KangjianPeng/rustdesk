@@ -403,10 +403,18 @@ impl HwRamDecoder {
     }
 
     // A benchmark must measure the selected backend even when it fails.
-    pub fn decode_without_fallback(&mut self, data: &[u8]) -> ResultType<Vec<HwRamDecoderImage<'_>>> {
+    pub fn decode_without_fallback(
+        &mut self,
+        data: &[u8],
+    ) -> ResultType<Vec<HwRamDecoderImage<'_>>> {
         self.decoder
             .decode(data)
-            .map(|frames| frames.iter().map(|frame| HwRamDecoderImage { frame }).collect())
+            .map(|frames| {
+                frames
+                    .iter()
+                    .map(|frame| HwRamDecoderImage { frame })
+                    .collect()
+            })
             .map_err(|error| anyhow!("FFmpeg decode failed: {error}"))
     }
 
@@ -462,7 +470,10 @@ mod decoder_fallback_tests {
         should_fallback_to_software, CodecInfo, HwRamEncoder, HwRamEncoderConfig, ERR_HEVC_POC,
     };
     use hwcodec::{
-        common::{DataFormat, RateControl::{RC_CBR, RC_CQP}},
+        common::{
+            DataFormat,
+            RateControl::{RC_CBR, RC_CQP},
+        },
         ffmpeg::AVHWDeviceType,
     };
 
@@ -499,7 +510,11 @@ mod decoder_fallback_tests {
 
         assert!(should_fallback_to_software(&h265_hardware, -1, true));
         assert!(!should_fallback_to_software(&h265_hardware, -1, false));
-        assert!(!should_fallback_to_software(&h265_hardware, ERR_HEVC_POC, true));
+        assert!(!should_fallback_to_software(
+            &h265_hardware,
+            ERR_HEVC_POC,
+            true
+        ));
         assert!(!should_fallback_to_software(&h264_hardware, -1, true));
     }
 }

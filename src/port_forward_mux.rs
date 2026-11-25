@@ -1091,7 +1091,11 @@ mod tests {
                 let addr = ours.peer_addr().unwrap();
                 let t = Tunnel::new();
                 t.claim();
-                let _h = t.set_muxed(Stream::Tcp(FramedStream::from(ours, addr)), None, NoUi::default());
+                let _h = t.set_muxed(
+                    Stream::Tcp(FramedStream::from(ours, addr)),
+                    None,
+                    NoUi::default(),
+                );
                 assert!(matches!(t.claim(), Claim::Muxed(_)));
                 // The codec's three-byte header form, declaring one byte more
                 // than the cap, and nothing behind it: an uncapped codec waits

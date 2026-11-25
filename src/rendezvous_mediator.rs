@@ -1772,8 +1772,8 @@ impl Drop for CheckIfResendPk {
 #[cfg(test)]
 mod tests {
     use super::{
-        connection_meta, mpsc, tokio, wait_for_retry, AnswererSlot, Duration, IceRoute,
-        Instant, IntoTargetAddr, Ordering, PunchHoleSent, RendezvousMediator, RendezvousMessage,
+        connection_meta, mpsc, tokio, wait_for_retry, AnswererSlot, Duration, IceRoute, Instant,
+        IntoTargetAddr, Ordering, PunchHoleSent, RendezvousMediator, RendezvousMessage,
         CONNECT_TIMEOUT, MANUAL_RESTARTED, MANUAL_RESTART_NOTIFY, MAX_WEBRTC_ANSWERERS,
         SHOULD_EXIT, TCP_PUNCHES, UDP_PUNCHES,
     };

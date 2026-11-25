@@ -84,8 +84,7 @@ impl FrameRaw {
         self.ready = false;
         // Never true: `last` starts empty and only `would_block_if_equal` fills it. Left off on
         // purpose: Android sends a frame only when the screen recomposes, so repeats are rare.
-        if last.len() == self.data.len() && crate::would_block_if_equal(last, &self.data).is_err()
-        {
+        if last.len() == self.data.len() && crate::would_block_if_equal(last, &self.data).is_err() {
             return None;
         }
         std::mem::swap(dst, &mut self.data);

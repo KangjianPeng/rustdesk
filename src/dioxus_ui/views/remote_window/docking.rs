@@ -159,16 +159,31 @@ pub(super) fn install_drag(mut dock: SyncSignal<ToolbarDock>) {
     let mut eval = document::eval(include_str!("toolbar_drag.js"));
     spawn(async move {
         while let Ok(event) = eval.recv::<DragEvent>().await {
-            let mut next = drag_position(event.cursor, event.parent, event.size, event.grab,
-                local_multi_edge(), fraction_bounds(Edge::Top));
+            let mut next = drag_position(
+                event.cursor,
+                event.parent,
+                event.size,
+                event.grab,
+                local_multi_edge(),
+                fraction_bounds(Edge::Top),
+            );
             next.dragging = !event.finished;
             dock.set(next);
             if event.finished {
                 if let Some(session) = crate::dioxus_ui::current_session() {
-                    session.set_option(OPTION_REMOTE_MENUBAR_EDGE.to_owned(), next.edge.name().to_owned());
-                    session.set_option(OPTION_REMOTE_MENUBAR_FRACTION.to_owned(), next.fraction.to_string());
+                    session.set_option(
+                        OPTION_REMOTE_MENUBAR_EDGE.to_owned(),
+                        next.edge.name().to_owned(),
+                    );
+                    session.set_option(
+                        OPTION_REMOTE_MENUBAR_FRACTION.to_owned(),
+                        next.fraction.to_string(),
+                    );
                     if !local_multi_edge() {
-                        session.set_option("remote-menubar-drag-x".to_owned(), next.fraction.to_string());
+                        session.set_option(
+                            "remote-menubar-drag-x".to_owned(),
+                            next.fraction.to_string(),
+                        );
                     }
                 }
             }

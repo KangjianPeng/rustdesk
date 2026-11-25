@@ -109,7 +109,7 @@ pub(super) fn LanguageSetting() -> Element {
     });
     let mut error = use_signal(String::new);
     let name = match selected().as_str() {
-        ""|"default"=> tr("System default"),
+        "" | "default" => tr("System default"),
         "zh-cn" => "简体中文".to_owned(),
         "zh-tw" => "繁體中文".to_owned(),
         _ => "English".to_owned(),
