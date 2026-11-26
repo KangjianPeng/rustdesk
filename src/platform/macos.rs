@@ -2,6 +2,7 @@
 // https://github.com/servo/core-foundation-rs
 // https://github.com/rust-windowing/winit
 
+mod delegate;
 mod update_temp;
 mod verified_dmg;
 
