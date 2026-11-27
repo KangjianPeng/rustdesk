@@ -163,6 +163,7 @@ jobs:
     name: macOS arm64 (.dmg)
     runs-on: macos-26
     env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
       VCPKG_BINARY_SOURCES: clear;x-gha,readwrite
     steps:
       - name: Checkout source
@@ -178,6 +179,8 @@ jobs:
 
       - name: Cache Cargo build
         uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          env-vars: MACOSX_DEPLOYMENT_TARGET
 
       - name: Install native build dependencies
         run: |
